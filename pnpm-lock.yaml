@@ -71,6 +71,9 @@ importers:
       openai:
         specifier: ^6.37.0
         version: 6.37.0(zod@4.4.3)
+      multer:
+        specifier: ^2.1.1
+        version: 2.1.1
       passport:
         specifier: ^0.7.0
         version: 0.7.0
