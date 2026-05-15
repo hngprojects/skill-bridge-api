@@ -17,6 +17,7 @@ import { TalentModule } from './modules/talent/talent.module';
 import { EmployerModule } from './modules/employer/employer.module';
 import { HealthModule } from './modules/health/health.module';
 import { InquiriesModule } from './modules/inquiries/inquiries.module';
+import { AiReportModule } from './modules/ai-report/ai-report.module';
 import { MailModule } from './modules/mail/mail.module';
 import { UsersModule } from './modules/users/users.module';
 import { ProbeController } from './probe.controller';
@@ -40,6 +41,7 @@ import { WelcomeController } from './welcome.controller';
     TalentModule,
     EmployerModule,
     MailModule,
+    AiReportModule,
   ],
   providers: [
     {
