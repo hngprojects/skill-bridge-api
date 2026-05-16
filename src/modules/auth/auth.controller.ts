@@ -92,7 +92,6 @@ export class AuthController {
     return {
       message: result.message,
       user: result.user,
-      accessToken: result.tokens.accessToken,
     };
   }
 
