@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class AddClaimedLevelToTalentProfiles1779210000000
-  implements MigrationInterface
-{
+export class AddClaimedLevelToTalentProfiles1779210000000 implements MigrationInterface {
   private readonly claimedLevelToEnumUsing = `
     CASE "claimed_level"::text
       WHEN 'beginner' THEN 'entry'::verified_level_enum
@@ -18,6 +16,15 @@ export class AddClaimedLevelToTalentProfiles1779210000000
   `;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Ensure the verified_level_enum exists (in case migrations run out of order)
+    await queryRunner.query(`
+      DO $$ BEGIN
+        CREATE TYPE "verified_level_enum" AS ENUM ('entry', 'junior', 'mid', 'senior', 'expert');
+      EXCEPTION
+        WHEN duplicate_object THEN null;
+      END $$;
+    `);
+
     const table = await queryRunner.getTable('talent_profiles');
     const column = table?.findColumnByName('claimed_level');
 
