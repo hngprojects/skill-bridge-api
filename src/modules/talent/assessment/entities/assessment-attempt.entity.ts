@@ -8,7 +8,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { TalentProfile } from '../../talent/entities/talent-profile.entity';
+import { TalentProfile } from '../../entities/talent-profile.entity';
 import { AssessmentType } from './assessment-question.entity';
 
 @Entity('assessment_attempts')

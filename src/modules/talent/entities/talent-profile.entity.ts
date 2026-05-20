@@ -10,7 +10,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity';
-import { VerifiedLevel } from '../../assessments/entities/assessment-question.entity';
+import { VerifiedLevel } from '../assessment/entities/assessment-question.entity';
 
 export enum TalentProfileStatus {
   NOT_STARTED = 'not_started',
@@ -82,7 +82,6 @@ export class TalentProfile {
     description:
       'True when all profile fields including optional ones are complete',
   })
-
   @Column({ type: 'boolean', default: false })
   profile_verified: boolean;
 

@@ -11,7 +11,7 @@ import {
   AssessmentResponse,
   AssessmentResult,
   TalentQuestionHistory,
-} from '../assessments/entities';
+} from './assessment/entities';
 import { PersonalAssessmentController } from './assessment/personal-assessment.controller';
 import { PersonalAssessmentService } from './assessment/personal-assessment.service';
 import { AdvancedAssessmentAiService } from './assessment/advanced-assessment-ai.service';

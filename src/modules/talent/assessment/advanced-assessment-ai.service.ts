@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AssessmentQuestion, QuestionType } from '../../assessments/entities';
+import { AssessmentQuestion, QuestionType } from './entities';
 import { TalentPersonalAssessmentContext } from './personal-assessment.service';
 
 export const ADVANCED_ASSESSMENT_TOTAL_QUESTIONS = 25;
@@ -77,7 +77,7 @@ export class AdvancedAssessmentAiService {
       options: question.options,
       slot_type: question.slot_type,
       metadata: question.metadata,
-      correct_answer: question.correct_answer
+      correct_answer: question.correct_answer,
     }));
   }
 }

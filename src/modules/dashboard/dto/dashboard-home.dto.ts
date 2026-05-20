@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { AssessmentTier } from '../../assessments/entities/assessment-result.entity';
-import { VerifiedLevel } from '../../assessments/entities/assessment-question.entity';
+import { AssessmentTier } from '../../talent/assessment/entities/assessment-result.entity';
+import { VerifiedLevel } from '../../talent/assessment/entities/assessment-question.entity';
 
 export enum DashboardJourneyStatus {
   AVAILABLE = 'available',
@@ -36,7 +36,8 @@ export class DashboardSkillPerformanceDto {
   validatedLevel: VerifiedLevel;
 
   @ApiProperty({
-    description: 'Whether the skill assessment met the 75% pass gate for advanced',
+    description:
+      'Whether the skill assessment met the 75% pass gate for advanced',
   })
   passed: boolean;
 

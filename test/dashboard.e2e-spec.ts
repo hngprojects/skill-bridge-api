@@ -24,7 +24,7 @@ import {
   AssessmentTier,
   AssessmentType,
   VerifiedLevel,
-} from '../src/modules/assessments/entities';
+} from '../src/modules/talent/assessment/entities';
 import {
   TalentProfile,
   TalentProfileStatus,

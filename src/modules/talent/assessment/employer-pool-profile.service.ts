@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { EmployerPoolProfile } from '../entities/employer-pool-profile.entity';
 import { TalentProfile } from '../entities/talent-profile.entity';
-import { AssessmentTier } from '../../assessments/entities/assessment-result.entity';
+import { AssessmentTier } from './entities/assessment-result.entity';
 import { ScoredTextAnswer } from '../../ai/ai.types';
 import { TalentPersonalAssessmentContext } from './personal-assessment.service';
 
@@ -111,7 +111,12 @@ export class EmployerPoolProfileService {
   private resolveIndustryBackground(
     ctx: TalentPersonalAssessmentContext,
   ): Record<string, unknown> | null {
-    const keys = ['industryExperience', 'yearsOfExperience', 'currentRole', 'previousRole'];
+    const keys = [
+      'industryExperience',
+      'yearsOfExperience',
+      'currentRole',
+      'previousRole',
+    ];
     const result: Record<string, unknown> = {};
     for (const k of keys) {
       if (ctx[k] !== undefined && ctx[k] !== null) result[k] = ctx[k];
@@ -122,7 +127,12 @@ export class EmployerPoolProfileService {
   private resolveWorkPreferences(
     ctx: TalentPersonalAssessmentContext,
   ): Record<string, unknown> | null {
-    const keys = ['workStyle', 'preferredEnvironment', 'remotePreference', 'teamSize'];
+    const keys = [
+      'workStyle',
+      'preferredEnvironment',
+      'remotePreference',
+      'teamSize',
+    ];
     const result: Record<string, unknown> = {};
     for (const k of keys) {
       if (ctx[k] !== undefined && ctx[k] !== null) result[k] = ctx[k];

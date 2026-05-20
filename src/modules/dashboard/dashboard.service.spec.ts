@@ -5,7 +5,7 @@ import {
   AssessmentTier,
   AssessmentType,
   VerifiedLevel,
-} from '../assessments/entities';
+} from '../talent/assessment/entities';
 import {
   TalentProfile,
   TalentProfileStatus,

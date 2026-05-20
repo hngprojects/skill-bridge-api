@@ -1,4 +1,4 @@
-import { VerifiedLevel } from '../../assessments/entities';
+import { VerifiedLevel } from './entities';
 
 export function metadataDifficulty(
   level: VerifiedLevel,

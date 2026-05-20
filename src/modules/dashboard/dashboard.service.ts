@@ -22,8 +22,8 @@ import {
   AssessmentResult,
   AssessmentTier,
   AssessmentType,
-} from '../assessments/entities';
-import { VerifiedLevel } from '../assessments/entities/assessment-question.entity';
+} from '../talent/assessment/entities';
+import { VerifiedLevel } from '../talent/assessment/entities/assessment-question.entity';
 
 const SKILL_PASS_PERCENTAGE = 75;
 
@@ -79,9 +79,7 @@ export class DashboardService {
     ]);
 
     return {
-      skill: skillResult
-        ? this.toSkillPerformance(skillResult, profile)
-        : null,
+      skill: skillResult ? this.toSkillPerformance(skillResult, profile) : null,
       advanced: advancedResult
         ? this.toAdvancedPerformance(advancedResult, profile)
         : null,
@@ -94,9 +92,7 @@ export class DashboardService {
   ): DashboardSkillPerformance {
     const percentage = result.percentage ?? 0;
     const validatedLevel =
-      result.validated_level ??
-      profile.validated_level ??
-      VerifiedLevel.ENTRY;
+      result.validated_level ?? profile.validated_level ?? VerifiedLevel.ENTRY;
 
     return {
       score: result.score,
@@ -119,9 +115,7 @@ export class DashboardService {
     profile: TalentProfile,
   ): DashboardAdvancedPerformance {
     const percentage = result.percentage ?? 0;
-    const tier =
-      result.tier ??
-      this.resolveTierFromPercentage(percentage);
+    const tier = result.tier ?? this.resolveTierFromPercentage(percentage);
 
     return {
       score: result.score,

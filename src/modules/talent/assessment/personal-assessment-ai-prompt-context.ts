@@ -1,4 +1,4 @@
-import { VerifiedLevel } from '../../assessments/entities/assessment-question.entity';
+import { VerifiedLevel } from './entities/assessment-question.entity';
 import { User } from '../../users/entities/user.entity';
 import { TalentProfile } from '../entities/talent-profile.entity';
 import {
@@ -37,7 +37,11 @@ function collectMergedAnswers(
 ): Record<string, unknown> {
   const answers: Record<string, unknown> = {};
 
-  for (let section = 1; section <= PERSONAL_ASSESSMENT_SECTION_COUNT; section++) {
+  for (
+    let section = 1;
+    section <= PERSONAL_ASSESSMENT_SECTION_COUNT;
+    section++
+  ) {
     for (const question of getSectionQuestions(section)) {
       answers[question.key] = resolveContextAnswer(
         question,

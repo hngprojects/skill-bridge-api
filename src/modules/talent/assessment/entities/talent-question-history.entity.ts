@@ -7,7 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { TalentProfile } from '../../talent/entities/talent-profile.entity';
+import { TalentProfile } from '../../entities/talent-profile.entity';
 import { AssessmentQuestion } from './assessment-question.entity';
 import { AssessmentAttempt } from './assessment-attempt.entity';
 

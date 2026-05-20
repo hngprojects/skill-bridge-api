@@ -1,5 +1,8 @@
-import { VerifiedLevel } from '../../assessments/entities/assessment-question.entity';
-import { TalentProfile, TalentProfileStatus } from '../entities/talent-profile.entity';
+import { VerifiedLevel } from './entities/assessment-question.entity';
+import {
+  TalentProfile,
+  TalentProfileStatus,
+} from '../entities/talent-profile.entity';
 import { User, UserRole } from '../../users/entities/user.entity';
 
 const NARRATIVE_80 =
@@ -28,7 +31,9 @@ export function makeTalentUser(overrides: Partial<User> = {}): User {
   });
 }
 
-export function makeTalentProfile(overrides: Partial<TalentProfile> = {}): TalentProfile {
+export function makeTalentProfile(
+  overrides: Partial<TalentProfile> = {},
+): TalentProfile {
   return Object.assign(new TalentProfile(), {
     id: 'profile-1',
     user_id: 'talent-user-1',

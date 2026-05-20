@@ -1,17 +1,21 @@
-import { QuestionType, SlotType, VerifiedLevel } from '../assessments/entities/assessment-question.entity';
+import {
+  QuestionType,
+  SlotType,
+  VerifiedLevel,
+} from '../talent/assessment/entities/assessment-question.entity';
 
 // ── Rubric scoring ────────────────────────────────────────────────────────────
 
 export interface RubricDimensions {
-  relevance: number;    // 0–3
-  reasoning: number;    // 0–3
-  specificity: number;  // 0–3
+  relevance: number; // 0–3
+  reasoning: number; // 0–3
+  specificity: number; // 0–3
   completeness: number; // 0–3
 }
 
 export interface RubricScore extends RubricDimensions {
-  total: number;        // sum of dimensions (max 12, or max 6 for LT-3)
-  feedback: string;     // one-sentence rationale
+  total: number; // sum of dimensions (max 12, or max 6 for LT-3)
+  feedback: string; // one-sentence rationale
 }
 
 export interface TextAnswerInput {
@@ -45,8 +49,8 @@ export interface GeneratedQuestion {
   question_text: string;
   question_type: QuestionType;
   slot_type: SlotType | null;
-  options: string[] | null;       // MCQ only
-  correct_answer: string | null;  // MCQ only
+  options: string[] | null; // MCQ only
+  correct_answer: string | null; // MCQ only
   competency: string | null;
   industry_context: string | null;
 }

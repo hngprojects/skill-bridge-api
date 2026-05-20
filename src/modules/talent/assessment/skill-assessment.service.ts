@@ -18,7 +18,7 @@ import {
   SlotType,
   TalentQuestionHistory,
   VerifiedLevel,
-} from '../../assessments/entities';
+} from './entities';
 import {
   TalentProfile,
   TalentProfileStatus,
@@ -228,7 +228,9 @@ export class SkillAssessmentService {
       message: SuccessMessages.SKILL_ASSESSMENT.STARTED,
       attempt_id: savedAttempt.id,
       verified_level: verifiedLevel,
-      questions: orderedQuestions.map(({ correct_answer: _ignored, ...question }) => question),
+      questions: orderedQuestions.map(
+        ({ correct_answer: _ignored, ...question }) => question,
+      ),
     };
   }
 
@@ -273,8 +275,12 @@ export class SkillAssessmentService {
     const questionEntities = await this.questionRepo.findBy({
       id: In(sessionQuestions.map((question) => question.question_id)),
     });
-    const entityMap = new Map(questionEntities.map((question) => [question.id, question]));
-    const answerMap = new Map(dto.answers.map((answer) => [answer.question_id, answer]));
+    const entityMap = new Map(
+      questionEntities.map((question) => [question.id, question]),
+    );
+    const answerMap = new Map(
+      dto.answers.map((answer) => [answer.question_id, answer]),
+    );
 
     let mcqCorrect = 0;
     let mcqTotal = 0;
@@ -359,9 +365,7 @@ export class SkillAssessmentService {
     const totalScore = mcqCorrect + textScore;
     const totalMaxScore = mcqTotal + textMaxScore;
     const percentage =
-      totalMaxScore > 0
-        ? Math.round((totalScore / totalMaxScore) * 100)
-        : 0;
+      totalMaxScore > 0 ? Math.round((totalScore / totalMaxScore) * 100) : 0;
 
     const validatedLevel = this.resolveValidatedLevel(
       percentage,
@@ -380,7 +384,8 @@ export class SkillAssessmentService {
           claimed_level: claimed,
           validated_level: validatedLevel,
           percentage,
-          strong_competencies: this.extractStrongCompetencies(scoredTextAnswers),
+          strong_competencies:
+            this.extractStrongCompetencies(scoredTextAnswers),
           weak_competencies: this.extractWeakCompetencies(scoredTextAnswers),
         });
       } catch (error) {
@@ -551,9 +556,7 @@ export class SkillAssessmentService {
     attempt: AssessmentAttempt,
   ): SkillAssessmentSessionQuestion[] {
     const questions = this.readSessionPayload(attempt).questions;
-    return Array.isArray(questions)
-      ? (questions)
-      : [];
+    return Array.isArray(questions) ? questions : [];
   }
 
   private scoreGeneratedMcq(
@@ -567,9 +570,7 @@ export class SkillAssessmentService {
     const userAnswer = Array.isArray(answer)
       ? answer.join(',').toLowerCase().trim()
       : String(answer).toLowerCase().trim();
-    const correctAnswer = String(question.correct_answer)
-      .toLowerCase()
-      .trim();
+    const correctAnswer = String(question.correct_answer).toLowerCase().trim();
 
     return userAnswer === correctAnswer;
   }
@@ -612,13 +613,19 @@ export class SkillAssessmentService {
 
   private extractStrongCompetencies(scored: ScoredTextAnswer[]): string[] {
     return scored
-      .filter((score) => score.max_score > 0 && score.raw_score / score.max_score >= 0.7)
+      .filter(
+        (score) =>
+          score.max_score > 0 && score.raw_score / score.max_score >= 0.7,
+      )
       .map((score) => score.question_id);
   }
 
   private extractWeakCompetencies(scored: ScoredTextAnswer[]): string[] {
     return scored
-      .filter((score) => score.max_score > 0 && score.raw_score / score.max_score < 0.5)
+      .filter(
+        (score) =>
+          score.max_score > 0 && score.raw_score / score.max_score < 0.5,
+      )
       .map((score) => score.question_id);
   }
 }

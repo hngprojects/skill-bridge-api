@@ -19,14 +19,14 @@ import {
   QuestionType,
   SlotType,
   TalentQuestionHistory,
-} from '../../assessments/entities';
-import { AssessmentTier } from '../../assessments/entities/assessment-result.entity';
+} from './entities';
+import { AssessmentTier } from './entities/assessment-result.entity';
 import { ErrorMessages, SuccessMessages } from '../../../shared';
 import {
   TalentProfile,
   TalentProfileStatus,
 } from '../entities/talent-profile.entity';
-import { VerifiedLevel } from '../../assessments/entities/assessment-question.entity';
+import { VerifiedLevel } from './entities/assessment-question.entity';
 import {
   ADVANCED_ASSESSMENT_LONG_TEXT_COUNT,
   ADVANCED_ASSESSMENT_MCQ_COUNT,
@@ -39,7 +39,12 @@ import { PersonalAssessmentService } from './personal-assessment.service';
 import { RubricScoringService } from '../../ai/rubric-scoring.service';
 import { GuidanceReportService } from '../../ai/guidance-report.service';
 import { EmployerPoolProfileService } from './employer-pool-profile.service';
-import { GeneratedQuestion, GuidanceReport, ScoredTextAnswer, TextAnswerInput } from '../../ai/ai.types';
+import {
+  GeneratedQuestion,
+  GuidanceReport,
+  ScoredTextAnswer,
+  TextAnswerInput,
+} from '../../ai/ai.types';
 import { QuestionGenerationService } from '../../ai/question-generation.service';
 import { MailService } from '../../mail/mail.service';
 import { UsersService } from '../../users/users.service';
@@ -377,7 +382,9 @@ export class AdvancedAssessmentService {
       );
     }
 
-    const answerMap = new Map(dto.answers.map((answer) => [answer.question_id, answer]));
+    const answerMap = new Map(
+      dto.answers.map((answer) => [answer.question_id, answer]),
+    );
     const longTextQuestions = sessionQuestions.filter(
       (question) => question.block === 'long_text',
     );
@@ -664,9 +671,7 @@ export class AdvancedAssessmentService {
     const userAnswer = Array.isArray(answer)
       ? answer.join(',').toLowerCase().trim()
       : String(answer).toLowerCase().trim();
-    const correctAnswer = String(question.correct_answer)
-      .toLowerCase()
-      .trim();
+    const correctAnswer = String(question.correct_answer).toLowerCase().trim();
 
     return userAnswer === correctAnswer;
   }
@@ -743,13 +748,19 @@ export class AdvancedAssessmentService {
 
   private extractStrongCompetencies(scored: ScoredTextAnswer[]): string[] {
     return scored
-      .filter((score) => score.max_score > 0 && score.raw_score / score.max_score >= 0.7)
+      .filter(
+        (score) =>
+          score.max_score > 0 && score.raw_score / score.max_score >= 0.7,
+      )
       .map((score) => score.question_id);
   }
 
   private extractWeakCompetencies(scored: ScoredTextAnswer[]): string[] {
     return scored
-      .filter((score) => score.max_score > 0 && score.raw_score / score.max_score < 0.5)
+      .filter(
+        (score) =>
+          score.max_score > 0 && score.raw_score / score.max_score < 0.5,
+      )
       .map((score) => score.question_id);
   }
 
@@ -843,10 +854,14 @@ export class AdvancedAssessmentService {
     );
 
     const mcq = [...bankMcq.slice(0, ADVANCED_ASSESSMENT_MCQ_COUNT)];
-    const shortText = [...bankShort.slice(0, ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT)];
+    const shortText = [
+      ...bankShort.slice(0, ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT),
+    ];
     const longText = [...bankLong.slice(0, BASE_LONG_TEXT_COUNT)];
 
-    const generatedQuestions: Array<GeneratedQuestion & { block: 'mcq' | 'short_text' | 'long_text' }> = [];
+    const generatedQuestions: Array<
+      GeneratedQuestion & { block: 'mcq' | 'short_text' | 'long_text' }
+    > = [];
     const industryContext = resolveIndustryContext(personalContext);
     const competencyHint = resolveCompetencyHint(personalContext);
     const verifiedLevel = profile.validated_level ?? VerifiedLevel.ENTRY;
@@ -865,11 +880,15 @@ export class AdvancedAssessmentService {
         count: mcqDeficit,
       });
       generatedQuestions.push(
-        ...generated.map((question) => ({ ...question, block: 'mcq' as const })),
+        ...generated.map((question) => ({
+          ...question,
+          block: 'mcq' as const,
+        })),
       );
     }
 
-    const shortDeficit = ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT - shortText.length;
+    const shortDeficit =
+      ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT - shortText.length;
     if (shortDeficit > 0) {
       const generated = await this.questionGeneration.generateQuestions({
         track,
@@ -902,7 +921,10 @@ export class AdvancedAssessmentService {
         count: longDeficit,
       });
       generatedQuestions.push(
-        ...generated.map((question) => ({ ...question, block: 'long_text' as const })),
+        ...generated.map((question) => ({
+          ...question,
+          block: 'long_text' as const,
+        })),
       );
     }
 
@@ -932,10 +954,12 @@ export class AdvancedAssessmentService {
       this.isMcq(question),
     );
     const generatedShort = persistedGenerated.filter(
-      (question) => !this.isMcq(question) && this.textBlock(question) === 'short_text',
+      (question) =>
+        !this.isMcq(question) && this.textBlock(question) === 'short_text',
     );
     const generatedLong = persistedGenerated.filter(
-      (question) => !this.isMcq(question) && this.textBlock(question) === 'long_text',
+      (question) =>
+        !this.isMcq(question) && this.textBlock(question) === 'long_text',
     );
 
     return {
@@ -955,7 +979,9 @@ export class AdvancedAssessmentService {
     manager: EntityManager,
     track: string,
     verifiedLevel: VerifiedLevel,
-    generated: Array<GeneratedQuestion & { block: 'mcq' | 'short_text' | 'long_text' }>,
+    generated: Array<
+      GeneratedQuestion & { block: 'mcq' | 'short_text' | 'long_text' }
+    >,
   ): Promise<AssessmentQuestion[]> {
     if (generated.length === 0) {
       return [];
@@ -975,7 +1001,9 @@ export class AdvancedAssessmentService {
         competency: null,
         slot_type:
           question.slot_type ??
-          (question.block === 'long_text' ? SlotType.WORK_TASK : SlotType.SITUATIONAL),
+          (question.block === 'long_text'
+            ? SlotType.WORK_TASK
+            : SlotType.SITUATIONAL),
         metadata: this.buildGeneratedQuestionMetadata({
           track,
           verifiedLevel,
@@ -983,7 +1011,9 @@ export class AdvancedAssessmentService {
           competency: question.competency,
           slotType:
             question.slot_type ??
-            (question.block === 'long_text' ? SlotType.WORK_TASK : SlotType.SITUATIONAL),
+            (question.block === 'long_text'
+              ? SlotType.WORK_TASK
+              : SlotType.SITUATIONAL),
           block: question.block,
           industryContext: question.industry_context,
         }),

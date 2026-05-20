@@ -3,14 +3,10 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
-import { AssessmentTier } from '../../assessments/entities/assessment-result.entity';
-import {
-  AssessmentAttempt,
-  AssessmentType,
-  QuestionType,
-} from '../../assessments/entities';
-import { AssessmentResult } from '../../assessments/entities/assessment-result.entity';
-import { VerifiedLevel } from '../../assessments/entities/assessment-question.entity';
+import { AssessmentTier } from './entities/assessment-result.entity';
+import { AssessmentAttempt, AssessmentType, QuestionType } from './entities';
+import { AssessmentResult } from './entities/assessment-result.entity';
+import { VerifiedLevel } from './entities/assessment-question.entity';
 import { TalentProfileStatus } from '../entities/talent-profile.entity';
 import { AdvancedAssessmentService } from './advanced-assessment.service';
 import { IntegrityEventType } from './dto/advanced-assessment.dto';

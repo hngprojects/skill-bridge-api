@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { AssessmentResult } from '../assessments/entities';
+import { AssessmentResult } from '../talent/assessment/entities';
 import { TalentProfile } from '../talent/entities/talent-profile.entity';
 import { UsersModule } from '../users/users.module';
 import { DashboardController } from './dashboard.controller';

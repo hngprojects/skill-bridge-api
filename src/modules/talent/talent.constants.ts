@@ -1,4 +1,4 @@
-import { VerifiedLevel } from '../assessments/entities/assessment-question.entity';
+import { VerifiedLevel } from './assessment/entities/assessment-question.entity';
 
 export const TALENT_GOALS = [
   'land_first_role',
@@ -23,8 +23,6 @@ export const TALENT_ROLE_TRACKS = [
 
 export type TalentRoleTrack = (typeof TALENT_ROLE_TRACKS)[number];
 
-
-
 /** Same values as `verified_level_enum` / `ValidatedLevel` on the profile. */
 export const TALENT_CLAIMED_LEVELS = [
   VerifiedLevel.ENTRY,
@@ -48,14 +46,13 @@ export const TALENT_EDUCATION_LEVELS = [
 
 export type TalentEducationLevel = (typeof TALENT_EDUCATION_LEVELS)[number];
 
-
 export const SKILL_ASSESSMENT_LEVEL_THRESHOLDS: Array<{
   level: VerifiedLevel;
   min: number;
 }> = [
   { level: VerifiedLevel.EXPERT, min: 90 },
   { level: VerifiedLevel.SENIOR, min: 75 },
-  { level: VerifiedLevel.MID,    min: 60 },
+  { level: VerifiedLevel.MID, min: 60 },
   { level: VerifiedLevel.JUNIOR, min: 40 },
-  { level: VerifiedLevel.ENTRY,  min: 0  },
+  { level: VerifiedLevel.ENTRY, min: 0 },
 ];
