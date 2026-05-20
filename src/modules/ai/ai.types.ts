@@ -79,10 +79,26 @@ export interface GuidanceReportInput {
   weak_competencies: string[];
 }
 
+export interface ResourceDetail {
+  title: string;
+  description: string;
+  type:
+    | 'video'
+    | 'article'
+    | 'course'
+    | 'documentation'
+    | 'tutorial'
+    | 'practice';
+  url: string | null;
+  is_free: boolean;
+  competencies: string[];
+  estimated_minutes: number | null;
+}
+
 export interface GuidanceReport {
   summary: string;
   strengths: string[];
   improvement_areas: string[];
-  recommended_resources: string[];
+  recommended_resources: ResourceDetail[];
   retake_advice: string;
 }

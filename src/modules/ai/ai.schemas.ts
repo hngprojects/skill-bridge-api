@@ -44,10 +44,27 @@ export const lt3Schema = z.object({
   question_text: z.string(),
 });
 
+export const resourceDetailSchema = z.object({
+  title: z.string(),
+  description: z.string(),
+  type: z.enum([
+    'video',
+    'article',
+    'course',
+    'documentation',
+    'tutorial',
+    'practice',
+  ]),
+  url: z.string().nullable(),
+  is_free: z.boolean(),
+  competencies: z.array(z.string()),
+  estimated_minutes: z.number().int().positive().nullable(),
+});
+
 export const guidanceReportSchema = z.object({
   summary: z.string(),
   strengths: z.array(z.string()),
   improvement_areas: z.array(z.string()),
-  recommended_resources: z.array(z.string()),
+  recommended_resources: z.array(resourceDetailSchema),
   retake_advice: z.string(),
 });
