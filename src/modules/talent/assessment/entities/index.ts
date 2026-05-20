@@ -9,3 +9,4 @@ export { AssessmentAttempt } from './assessment-attempt.entity';
 export { AssessmentResponse } from './assessment-response.entity';
 export { AssessmentResult, AssessmentTier } from './assessment-result.entity';
 export { TalentQuestionHistory } from './talent-question-history.entity';
+export { AssessmentResource, ResourceType } from './assessment-resource.entity';
