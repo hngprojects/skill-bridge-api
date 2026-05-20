@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
 import {
   ApiCookieAuth,
   ApiNotFoundResponse,
@@ -12,8 +6,6 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
-import { AuthGuard } from '../../auth/guards/auth.guard';
-import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../../common/decorators/current-user.decorator';
 import { UserRole } from '../../users/entities/user.entity';
@@ -23,7 +15,6 @@ import { ResourcesListResponseDto } from './dto/resources.dto';
 @ApiTags('talent-assessment')
 @ApiCookieAuth()
 @Controller('talent/assessment')
-@UseGuards(AuthGuard, RolesGuard)
 @Roles(UserRole.TALENT)
 export class AssessmentResourcesController {
   constructor(private readonly resourcesService: AssessmentResourcesService) {}
