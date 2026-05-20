@@ -11,6 +11,7 @@ import {
   AssessmentResource,
   AssessmentResponse,
   AssessmentResult,
+  AssessmentScore,
   TalentQuestionHistory,
 } from './assessment/entities';
 import { PersonalAssessmentController } from './assessment/personal-assessment.controller';
@@ -36,6 +37,7 @@ import { TalentService } from './talent.service';
       AssessmentResponse,
       AssessmentResult,
       AssessmentResource,
+      AssessmentScore,
       TalentQuestionHistory,
     ]),
     UsersModule,
