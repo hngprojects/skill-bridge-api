@@ -8,6 +8,7 @@ import { EmployerPoolProfile } from './entities/employer-pool-profile.entity';
 import {
   AssessmentAttempt,
   AssessmentQuestion,
+  AssessmentResource,
   AssessmentResponse,
   AssessmentResult,
   TalentQuestionHistory,
@@ -20,6 +21,8 @@ import { AdvancedAssessmentService } from './assessment/advanced-assessment.serv
 import { EmployerPoolProfileService } from './assessment/employer-pool-profile.service';
 import { SkillAssessmentController } from './assessment/skill-assessment.controller';
 import { SkillAssessmentService } from './assessment/skill-assessment.service';
+import { AssessmentResourcesController } from './assessment/assessment-resources.controller';
+import { AssessmentResourcesService } from './assessment/assessment-resources.service';
 import { TalentController } from './talent.controller';
 import { TalentService } from './talent.service';
 
@@ -32,6 +35,7 @@ import { TalentService } from './talent.service';
       AssessmentAttempt,
       AssessmentResponse,
       AssessmentResult,
+      AssessmentResource,
       TalentQuestionHistory,
     ]),
     UsersModule,
@@ -42,6 +46,7 @@ import { TalentService } from './talent.service';
     TalentController,
     PersonalAssessmentController,
     SkillAssessmentController,
+    AssessmentResourcesController,
     AdvancedAssessmentController,
   ],
   providers: [
@@ -50,6 +55,7 @@ import { TalentService } from './talent.service';
     SkillAssessmentService,
     AdvancedAssessmentAiService,
     AdvancedAssessmentService,
+    AssessmentResourcesService,
     EmployerPoolProfileService,
   ],
 })

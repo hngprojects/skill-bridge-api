@@ -48,6 +48,7 @@ import {
 import { QuestionGenerationService } from '../../ai/question-generation.service';
 import { MailService } from '../../mail/mail.service';
 import { UsersService } from '../../users/users.service';
+import { AssessmentResourcesService } from './assessment-resources.service';
 import {
   FlagIntegrityEventDto,
   IntegrityEventType,
@@ -144,6 +145,7 @@ export class AdvancedAssessmentService {
     private readonly questionGeneration: QuestionGenerationService,
     private readonly usersService: UsersService,
     private readonly mailService: MailService,
+    private readonly resourcesService: AssessmentResourcesService,
   ) {}
 
   async start(userId: string): Promise<AdvancedAssessmentSessionResult> {
@@ -511,7 +513,21 @@ export class AdvancedAssessmentService {
         guidance_report: guidanceReport ? { ...guidanceReport } : null,
         integrity_confidence: integrityConfidence,
       });
-      await manager.save(AssessmentResult, result);
+      const savedResult = await manager.save(AssessmentResult, result);
+
+      // Persist resources if guidance report was generated
+      if (guidanceReport && guidanceReport.recommended_resources) {
+        try {
+          await this.resourcesService.persistResources(
+            savedResult.id,
+            guidanceReport.recommended_resources,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Failed to persist resources for result=${savedResult.id}: ${String(error)}`,
+          );
+        }
+      }
 
       const profilePatch: Partial<TalentProfile> = {
         advanced_assessment_completed_at: new Date(),
