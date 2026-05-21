@@ -44,6 +44,9 @@ export const ErrorMessages = {
       'Assessment attempt has no questions; please start a new session',
     PASS_REQUIRED:
       'You need a score of 75% or higher in the skill assessment before starting the advanced assessment',
+    MAX_ATTEMPTS_REACHED:
+      'You have used all skill assessment attempts. Complete the advanced assessment to unlock further skill retakes.',
+    ACTIVE_SESSION_EXISTS: 'Active skill assessment session already exists',
   },
   ADVANCED_ASSESSMENT: {
     PROFILE_NOT_FOUND: 'Talent profile not found',
@@ -57,13 +60,14 @@ export const ErrorMessages = {
     SESSION_NOT_FOUND: 'Advanced assessment session not found',
     SESSION_CORRUPT: 'Advanced assessment session has no questions',
     ATTEMPT_NOT_FOUND: 'Assessment session not found',
-    ATTEMPT_ALREADY_SUBMITTED: 'This assessment session has already been submitted',
+    ATTEMPT_ALREADY_SUBMITTED:
+      'This assessment session has already been submitted',
     SESSION_EXPIRED: 'Assessment session has expired',
     RETAKE_LOCKED: (unlocksAt: string) =>
       `Advanced assessment is locked until ${unlocksAt}. Retakes are available after a 14-day gate.`,
-    SESSION_VOIDED: 'Assessment session has been voided due to integrity violations. A 14-day retake gate has started.',
-    LT2_NOT_SUBMITTED:
-      'Complete the previous question to continue.',
+    SESSION_VOIDED:
+      'Assessment session has been voided due to integrity violations. A 14-day retake gate has started.',
+    LT2_NOT_SUBMITTED: 'Complete the previous question to continue.',
     LT2_QUESTION_MISMATCH:
       'The question_id provided does not match the LT-2 (work task) question for this session.',
     LT3_GENERATION_FAILED:
@@ -83,6 +87,14 @@ export const ErrorMessages = {
     PHOTO_TOO_LARGE: 'File size too large, please upload a smaller image',
     TRACK_REQUIRED_FOR_PERSONALISE: 'Track is required to generate assessments',
     PERSONALISATION_FAILED: 'Personalisation failed, please try again',
+  },
+  VERIFIED_PROFILE: {
+    NOT_AVAILABLE:
+      'Verified profile is only available for job-ready talents who have completed the advanced assessment',
+    NOT_FOUND: 'Verified profile not found',
+    INVALID_TOKEN: 'Invalid share link token',
+    TIMESTAMP_UNAVAILABLE:
+      'Verified profile verification timestamp is not available',
   },
   COMMON: {
     INSUFFICIENT_PERMISSIONS: 'Insufficient permissions',

@@ -213,6 +213,7 @@ describe('AdvancedAssessmentService', () => {
   let questionGeneration: {};
   let usersService: { findOne: jest.Mock };
   let mailService: { sendAssessmentPerformance: jest.Mock };
+  let resourcesService: { persistResources: jest.Mock };
 
   // Cross-test captures
   let entityManagerSaveCalls: Array<{ entity: unknown; data: unknown }>;
@@ -322,6 +323,10 @@ describe('AdvancedAssessmentService', () => {
       sendAssessmentPerformance: jest.fn().mockResolvedValue({ id: 'email-1' }),
     };
 
+    resourcesService = {
+      persistResources: jest.fn().mockResolvedValue([]),
+    };
+
     service = new AdvancedAssessmentService(
       talentProfileRepo as never,
       questionRepo as never,
@@ -336,6 +341,7 @@ describe('AdvancedAssessmentService', () => {
       questionGeneration as never,
       usersService as never,
       mailService as never,
+      resourcesService as never,
     );
   });
 

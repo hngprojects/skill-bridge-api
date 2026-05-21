@@ -47,18 +47,24 @@ import {
   TextAnswerInput,
 } from '../../ai/ai.types';
 import { QuestionGenerationService } from '../../ai/question-generation.service';
+import { Lt3GenerationService } from '../../ai/lt3-generation.service';
 import { MailService } from '../../mail/mail.service';
 import { UsersService } from '../../users/users.service';
 import {
   FlagIntegrityEventDto,
   IntegrityEventType,
   SubmitAdvancedAssessmentDto,
+  SubmitLt2Dto,
 } from './dto/advanced-assessment.dto';
 import {
   metadataDifficulty,
   resolveCompetencyHint,
   resolveIndustryContext,
 } from './assessment-utils';
+import {
+  competenciesForTrack,
+  normaliseCompetency,
+} from './competency-taxonomy';
 
 const ADVANCED_ASSESSMENT_DURATION_MINUTES = 90;
 const RETAKE_GATE_DAYS = 14;
@@ -107,6 +113,16 @@ export interface IntegrityFlagResult {
   action?: 'warn' | 'logout';
 }
 
+export interface SubmitLt2Result {
+  status: string;
+  message: string;
+  session_id: string;
+  question_id: string;
+  question_number: number;
+  question_text: string;
+  max_seconds_remaining: number;
+}
+
 type AdvancedAssessmentSessionPayload = {
   context?: {
     verified_level?: unknown;
@@ -141,6 +157,7 @@ export class AdvancedAssessmentService {
     private readonly advancedAssessmentAiService: AdvancedAssessmentAiService,
     private readonly rubricScoring: RubricScoringService,
     private readonly guidanceReport: GuidanceReportService,
+    private readonly lt3Generation: Lt3GenerationService,
     private readonly employerPoolProfileService: EmployerPoolProfileService,
     private readonly questionGeneration: QuestionGenerationService,
     private readonly usersService: UsersService,
@@ -591,6 +608,225 @@ export class AdvancedAssessmentService {
     };
   }
 
+  /**
+   * Generate LT-3 from the candidate's LT-2 answer and append it to the
+   * session payload. Idempotent: a repeated call returns the LT-3 that was
+   * generated on the first call without invoking the LLM again.
+   */
+  async submitLt2(
+    userId: string,
+    sessionId: string,
+    dto: SubmitLt2Dto,
+  ): Promise<SubmitLt2Result> {
+    const profile = await this.talentProfileRepo.findOne({
+      where: { user_id: userId },
+    });
+    if (!profile) {
+      throw new NotFoundException(
+        ErrorMessages.ADVANCED_ASSESSMENT.PROFILE_NOT_FOUND,
+      );
+    }
+
+    const attempt = await this.attemptRepo.findOne({
+      where: {
+        id: sessionId,
+        talent_profile_id: profile.id,
+        assessment_type: AssessmentType.ADVANCED,
+      },
+    });
+    if (!attempt) {
+      throw new NotFoundException(
+        ErrorMessages.ADVANCED_ASSESSMENT.ATTEMPT_NOT_FOUND,
+      );
+    }
+    if (attempt.completed_at) {
+      throw new BadRequestException(
+        ErrorMessages.ADVANCED_ASSESSMENT.ATTEMPT_ALREADY_SUBMITTED,
+      );
+    }
+    if (attempt.force_submitted) {
+      throw new BadRequestException(
+        ErrorMessages.ADVANCED_ASSESSMENT.SESSION_VOIDED,
+      );
+    }
+    if (attempt.expires_at && attempt.expires_at <= new Date()) {
+      throw new UnprocessableEntityException(
+        ErrorMessages.ADVANCED_ASSESSMENT.SESSION_EXPIRED,
+      );
+    }
+
+    const sessionQuestions = this.readSessionQuestions(attempt);
+    if (sessionQuestions.length === 0) {
+      throw new BadRequestException(
+        ErrorMessages.ADVANCED_ASSESSMENT.SESSION_CORRUPT,
+      );
+    }
+
+    // Locate the LT-2 (last WORK_TASK long-text) and confirm the client posted
+    // an answer for the right question_id.
+    const workTaskQuestions = sessionQuestions.filter(
+      (question) =>
+        question.block === 'long_text' &&
+        question.slot_type === SlotType.WORK_TASK,
+    );
+    const lt2Question = workTaskQuestions[workTaskQuestions.length - 1];
+    if (!lt2Question) {
+      throw new BadRequestException(
+        ErrorMessages.ADVANCED_ASSESSMENT.SESSION_CORRUPT,
+      );
+    }
+    if (lt2Question.question_id !== dto.question_id) {
+      throw new UnprocessableEntityException({
+        error: 'LT2_QUESTION_MISMATCH',
+        message: String(
+          ErrorMessages.ADVANCED_ASSESSMENT.LT2_QUESTION_MISMATCH,
+        ),
+      });
+    }
+
+    // Idempotency: if LT-3 has already been generated for this attempt,
+    // return it as-is. Prevents flaky-connection retries from spawning
+    // a different reflection question.
+    const existingLt3 = sessionQuestions.find(
+      (question) => question.slot_type === SlotType.REFLECTION,
+    );
+    if (existingLt3) {
+      this.logger.log(
+        `LT-3 already generated for attempt=${attempt.id}; returning existing.`,
+      );
+      return {
+        status: 'success',
+        message: String(SuccessMessages.ADVANCED_ASSESSMENT.LT2_SUBMITTED),
+        session_id: attempt.id,
+        question_id: existingLt3.question_id,
+        question_number: existingLt3.question_number,
+        question_text: existingLt3.question_text,
+        max_seconds_remaining: this.remainingSeconds(attempt),
+      };
+    }
+
+    const verifiedLevel = profile.validated_level ?? VerifiedLevel.ENTRY;
+    const track = profile.track ?? 'general';
+
+    let generatedLt3Text: string;
+    try {
+      const generated = await this.lt3Generation.generate({
+        track,
+        verified_level: verifiedLevel,
+        lt2_question_text: lt2Question.question_text,
+        lt2_answer: dto.answer,
+      });
+      generatedLt3Text = generated.question_text;
+    } catch (error) {
+      this.logger.error(
+        `LT-3 generation failed for attempt=${attempt.id}: ${String(error)}`,
+      );
+      throw new ServiceUnavailableException({
+        error: 'LT3_GENERATION_FAILED',
+        message: String(
+          ErrorMessages.ADVANCED_ASSESSMENT.LT3_GENERATION_FAILED,
+        ),
+      });
+    }
+
+    const nextQuestionNumber = sessionQuestions.length + 1;
+    const result = await this.talentProfileRepo.manager.transaction(
+      async (manager) => {
+        // Persist a stable AssessmentQuestion row for the runtime LT-3 so it
+        // has a UUID we can use in responses + score rows + history.
+        const lt3Question = await manager.save(
+          AssessmentQuestion,
+          manager.create(AssessmentQuestion, {
+            assessment_type: AssessmentType.ADVANCED,
+            question_type: QuestionType.OPTIONAL_TEXT,
+            question_text: generatedLt3Text,
+            question_number: nextQuestionNumber,
+            options: null,
+            correct_answer: null,
+            track: null,
+            verified_level: null,
+            competency: null,
+            slot_type: SlotType.REFLECTION,
+            // CHK_assessment_questions_metadata_valid requires difficulty,
+            // estimated_time_seconds, and a tags array. We extend the base
+            // generated-question metadata with the LT-2 linkage for audit.
+            metadata: {
+              ...this.buildGeneratedQuestionMetadata({
+                track,
+                verifiedLevel,
+                questionType: QuestionType.OPTIONAL_TEXT,
+                competency: null,
+                slotType: SlotType.REFLECTION,
+                block: 'long_text',
+                industryContext: null,
+              }),
+              lt3_runtime: true,
+              lt2_question_id: lt2Question.question_id,
+            },
+            is_live: false,
+          }),
+        );
+
+        // Block this specific LT-3 question from ever being re-served.
+        await manager.save(
+          TalentQuestionHistory,
+          manager.create(TalentQuestionHistory, {
+            talent_profile_id: profile.id,
+            question_id: lt3Question.id,
+            attempt_id: attempt.id,
+            user_answer: { lt3_runtime: true },
+            is_correct: null,
+            raw_score: null,
+            max_score: null,
+            answered_at: new Date(),
+          }),
+        );
+
+        // Append LT-3 to the session jsonb so subsequent /session/:id reads
+        // and the final /advanced/submit see all 25 questions. Mirror the
+        // exact metadata we just persisted so the session view and the DB
+        // row stay in sync.
+        const updatedQuestions: AdvancedAssessmentGeneratedQuestion[] = [
+          ...sessionQuestions,
+          {
+            question_id: lt3Question.id,
+            question_number: nextQuestionNumber,
+            block: 'long_text',
+            question_type: QuestionType.OPTIONAL_TEXT,
+            question_text: generatedLt3Text,
+            options: null,
+            slot_type: SlotType.REFLECTION,
+            metadata: lt3Question.metadata as Record<string, unknown>,
+            correct_answer: null,
+          },
+        ];
+
+        const payload = this.readSessionPayload(attempt);
+        attempt.generated_questions_json = {
+          ...payload,
+          questions: updatedQuestions,
+        };
+        await manager.save(AssessmentAttempt, attempt);
+
+        return lt3Question;
+      },
+    );
+
+    this.logger.log(
+      `LT-3 generated: attempt=${attempt.id} user=${userId} lt3=${result.id}`,
+    );
+
+    return {
+      status: 'success',
+      message: String(SuccessMessages.ADVANCED_ASSESSMENT.LT2_SUBMITTED),
+      session_id: attempt.id,
+      question_id: result.id,
+      question_number: nextQuestionNumber,
+      question_text: generatedLt3Text,
+      max_seconds_remaining: this.remainingSeconds(attempt),
+    };
+  }
+
   async flag(
     userId: string,
     sessionId: string,
@@ -1006,8 +1242,27 @@ export class AdvancedAssessmentService {
     }
 
     const nextQuestionNumber = await this.nextAdvancedQuestionNumber(manager);
-    const questions = generated.map((question, index) =>
-      manager.create(AssessmentQuestion, {
+    const trackHasTaxonomy = competenciesForTrack(track).length > 0;
+
+    const questions = generated.map((question, index) => {
+      // Validate AI-generated competency against the track taxonomy. If
+      // the model returned junk (or the track is unknown), fall back to
+      // the first valid competency for the track.
+      const normalisedCompetency = trackHasTaxonomy
+        ? normaliseCompetency(track, question.competency)
+        : (question.competency ?? null);
+      const slotType =
+        question.slot_type ??
+        (question.block === 'long_text'
+          ? SlotType.WORK_TASK
+          : SlotType.SITUATIONAL);
+
+      // CHK_assessment_questions_type_fields: advanced rows must have
+      // track/verified_level/competency = NULL on the row itself. The
+      // normalised competency lives in metadata.competency so the rest of
+      // the engine (extractCompetencies, employer pool, assessment_scores)
+      // can still read it from the session jsonb.
+      return manager.create(AssessmentQuestion, {
         assessment_type: AssessmentType.ADVANCED,
         question_type: question.question_type,
         question_text: question.question_text,
@@ -1017,16 +1272,12 @@ export class AdvancedAssessmentService {
         track: null,
         verified_level: null,
         competency: null,
-        slot_type:
-          question.slot_type ??
-          (question.block === 'long_text'
-            ? SlotType.WORK_TASK
-            : SlotType.SITUATIONAL),
+        slot_type: slotType,
         metadata: this.buildGeneratedQuestionMetadata({
           track,
           verifiedLevel,
           questionType: question.question_type,
-          competency: question.competency,
+          competency: normalisedCompetency,
           slotType:
             question.slot_type ??
             (question.block === 'long_text'
@@ -1036,8 +1287,8 @@ export class AdvancedAssessmentService {
           industryContext: question.industry_context,
         }),
         is_live: false,
-      }),
-    );
+      });
+    });
 
     return manager.save(AssessmentQuestion, questions);
   }
@@ -1115,6 +1366,16 @@ export class AdvancedAssessmentService {
     return question.question_type === QuestionType.OPTIONAL_TEXT
       ? 'long_text'
       : 'short_text';
+  }
+
+  private remainingSeconds(attempt: AssessmentAttempt): number {
+    if (!attempt.expires_at) {
+      return 0;
+    }
+    return Math.max(
+      0,
+      Math.floor((attempt.expires_at.getTime() - Date.now()) / 1000),
+    );
   }
 
   private toSessionResult(
