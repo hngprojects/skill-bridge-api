@@ -106,9 +106,7 @@ export class EmployerPoolProfileService {
 
     for (const answer of scored) {
       const pct =
-        answer.max_score > 0
-          ? (answer.raw_score / answer.max_score) * 100
-          : 0;
+        answer.max_score > 0 ? (answer.raw_score / answer.max_score) * 100 : 0;
       const competency =
         competencyByQuestion?.get(answer.question_id) ?? answer.question_id;
       const key = competency.toLowerCase();
