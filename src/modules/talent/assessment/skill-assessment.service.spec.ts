@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException } from '@nestjs/common';
-import { AssessmentAttempt, AssessmentType } from '../../assessments/entities';
+import { AssessmentAttempt, AssessmentType } from './entities';
 import { TalentProfile } from '../entities/talent-profile.entity';
 import { ErrorMessages } from '../../../shared';
 import { SKILL_ASSESSMENT_MAX_ATTEMPTS } from '../talent.constants';

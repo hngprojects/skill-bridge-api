@@ -399,6 +399,16 @@ export class AdvancedAssessmentService {
       );
     }
 
+    // Guard: Ensure LT-2 (WORK_TASK) has been submitted and LT-3 (REFLECTION) was generated
+    const hasReflectionSlot = sessionQuestions.some(
+      (question) => question.slot_type === SlotType.REFLECTION,
+    );
+    if (!hasReflectionSlot) {
+      throw new UnprocessableEntityException({
+        error: 'LT2_NOT_SUBMITTED',
+      });
+    }
+
     const answerMap = new Map(
       dto.answers.map((answer) => [answer.question_id, answer]),
     );
@@ -903,10 +913,19 @@ export class AdvancedAssessmentService {
       };
     }
 
-    this.logger.warn(
-      `Copy-paste detected: attempt=${attempt.id} user=${userId}`,
-    );
+    if (dto.event_type === IntegrityEventType.COPY_PASTE) {
+      this.logger.warn(
+        `Copy-paste detected: attempt=${attempt.id} user=${userId}`,
+      );
 
+      return {
+        status: 'flagged',
+        message: SuccessMessages.ADVANCED_ASSESSMENT.INTEGRITY_FLAGGED,
+        session_voided: false,
+      };
+    }
+
+    // Fallback for any other event types
     return {
       status: 'flagged',
       message: SuccessMessages.ADVANCED_ASSESSMENT.INTEGRITY_FLAGGED,
