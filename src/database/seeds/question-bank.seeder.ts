@@ -249,6 +249,71 @@ const questionSeeds: QuestionSeed[] = [
   },
   {
     question_text:
+      'Describe your approach to securing API keys and credentials in a production application.',
+    question_type: QuestionType.REQUIRED_TEXT,
+    options: null,
+    correct_answer: null,
+    slot_type: SlotType.WORK_TASK,
+    metadata: buildMetadata(
+      'medium',
+      120,
+      ['security', 'secrets'],
+      'short_text',
+    ),
+  },
+  {
+    question_text:
+      'How would you handle graceful shutdowns for a Node.js server with active connections?',
+    question_type: QuestionType.REQUIRED_TEXT,
+    options: null,
+    correct_answer: null,
+    slot_type: SlotType.SITUATIONAL,
+    metadata: buildMetadata(
+      'medium',
+      120,
+      ['nodejs', 'lifecycle'],
+      'short_text',
+    ),
+  },
+  {
+    question_text:
+      'Explain how you would implement rate limiting for a REST API.',
+    question_type: QuestionType.REQUIRED_TEXT,
+    options: null,
+    correct_answer: null,
+    slot_type: SlotType.WORK_TASK,
+    metadata: buildMetadata(
+      'medium',
+      120,
+      ['api', 'rate-limiting'],
+      'short_text',
+    ),
+  },
+  {
+    question_text:
+      'What strategies would you use to prevent N+1 query problems in an ORM?',
+    question_type: QuestionType.REQUIRED_TEXT,
+    options: null,
+    correct_answer: null,
+    slot_type: SlotType.REFLECTION,
+    metadata: buildMetadata(
+      'medium',
+      120,
+      ['orm', 'performance'],
+      'short_text',
+    ),
+  },
+  {
+    question_text:
+      'How would you implement proper error handling for async operations in JavaScript?',
+    question_type: QuestionType.REQUIRED_TEXT,
+    options: null,
+    correct_answer: null,
+    slot_type: SlotType.SITUATIONAL,
+    metadata: buildMetadata('easy', 90, ['javascript', 'async'], 'short_text'),
+  },
+  {
+    question_text:
       'Design a scalable file upload pipeline for large files that includes virus scanning and progress reporting.',
     question_type: QuestionType.OPTIONAL_TEXT,
     options: null,
