@@ -6,6 +6,7 @@ import {
   ResourceType,
 } from './entities/assessment-resource.entity';
 import { AssessmentResult } from './entities/assessment-result.entity';
+import { TalentProfile } from '../entities/talent-profile.entity';
 import { ResourceDetail } from '../../ai/ai.types';
 
 export interface ResourceListResponse {
@@ -21,6 +22,8 @@ export class AssessmentResourcesService {
     private readonly resourceRepo: Repository<AssessmentResource>,
     @InjectRepository(AssessmentResult)
     private readonly resultRepo: Repository<AssessmentResult>,
+    @InjectRepository(TalentProfile)
+    private readonly talentProfileRepo: Repository<TalentProfile>,
   ) {}
 
   /**
@@ -55,12 +58,24 @@ export class AssessmentResourcesService {
    * Get resources for a user's latest advanced assessment result
    */
   async getResourcesForUser(userId: string): Promise<ResourceListResponse> {
+    // Find the user's talent profile ID
+    const profile = await this.talentProfileRepo
+      .createQueryBuilder('profile')
+      .select('profile.id')
+      .where('profile.user_id = :userId', { userId })
+      .getOne();
+
+    if (!profile) {
+      throw new NotFoundException('Talent profile not found');
+    }
+
     // Find the latest advanced assessment result for this user
     const result = await this.resultRepo
       .createQueryBuilder('result')
       .innerJoin('result.attempt', 'attempt')
-      .innerJoin('attempt.profile', 'profile')
-      .where('profile.user_id = :userId', { userId })
+      .where('attempt.talent_profile_id = :profileId', {
+        profileId: profile.id,
+      })
       .andWhere('attempt.assessment_type = :type', { type: 'advanced' })
       .andWhere('result.tier IS NOT NULL')
       .orderBy('result.created_at', 'DESC')
