@@ -28,10 +28,10 @@ import {
   TalentProfileStatus,
 } from '../entities/talent-profile.entity';
 import {
+  ADVANCED_ASSESSMENT_BASE_QUESTIONS,
   ADVANCED_ASSESSMENT_LONG_TEXT_COUNT,
   ADVANCED_ASSESSMENT_MCQ_COUNT,
   ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT,
-  ADVANCED_ASSESSMENT_TOTAL_QUESTIONS,
   AdvancedAssessmentAiService,
   AdvancedAssessmentGeneratedQuestion,
 } from './advanced-assessment-ai.service';
@@ -247,7 +247,7 @@ export class AdvancedAssessmentService {
           selectedQuestions,
         );
 
-        if (aiResult.questions.length !== ADVANCED_ASSESSMENT_TOTAL_QUESTIONS) {
+        if (aiResult.questions.length !== ADVANCED_ASSESSMENT_BASE_QUESTIONS) {
           throw new ServiceUnavailableException({
             error: 'BANK_EXHAUSTED',
             message: ErrorMessages.ADVANCED_ASSESSMENT.BANK_EXHAUSTED,
