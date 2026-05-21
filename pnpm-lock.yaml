@@ -11,6 +11,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.1046.0
         version: 3.1046.0
+      '@google/generative-ai':
+        specifier: ^0.24.1
+        version: 0.24.1
       '@hng-sdk/orm':
         specifier: ^0.0.0
         version: 0.0.0(class-transformer@0.5.1)(ioredis@5.10.1)(pg@8.20.0)(ts-node@10.9.2(@types/node@25.7.0)(typescript@5.9.3))
@@ -611,6 +614,10 @@ packages:
   '@eslint/plugin-kit@0.7.1':
     resolution: {integrity: sha512-rZAP3aVgB9ds9KOeUSL+zZ21hPmo8dh6fnIFwRQj5EAZl9gzR7wxYbYXYysAM8CTqGmUGyp2S4kUdV17MnGuWQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
+
+  '@google/generative-ai@0.24.1':
+    resolution: {integrity: sha512-MqO+MLfM6kjxcKoy0p1wRzG3b4ZZXtPI+z2IE26UogS2Cm/XHO+7gGRBh6gcJsOiIVoH93UwKvW4HdgiOZCy9Q==}
+    engines: {node: '>=18.0.0'}
 
   '@hng-sdk/orm@0.0.0':
     resolution: {integrity: sha512-7L70TEDJHzrgeCMhtheUTBi4DL8HhKjKu3JlXlIKKt6P5zrF763CRaqF4Lr3v/9usVnw0seDBHGNhV3lOm6xXg==}
@@ -4521,6 +4528,8 @@ snapshots:
     dependencies:
       '@eslint/core': 1.2.1
       levn: 0.4.1
+
+  '@google/generative-ai@0.24.1': {}
 
   '@hng-sdk/orm@0.0.0(class-transformer@0.5.1)(ioredis@5.10.1)(pg@8.20.0)(ts-node@10.9.2(@types/node@25.7.0)(typescript@5.9.3))':
     dependencies:
