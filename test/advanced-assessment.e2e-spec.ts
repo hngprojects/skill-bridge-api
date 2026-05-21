@@ -21,6 +21,8 @@ import { TransformInterceptor } from '../src/common/interceptors/transform.inter
 import { AdvancedAssessmentController } from '../src/modules/talent/assessment/advanced-assessment.controller';
 import { AdvancedAssessmentService } from '../src/modules/talent/assessment/advanced-assessment.service';
 import { AdvancedAssessmentAiService } from '../src/modules/talent/assessment/advanced-assessment-ai.service';
+import { AssessmentResourcesController } from '../src/modules/talent/assessment/assessment-resources.controller';
+import { AssessmentResourcesService } from '../src/modules/talent/assessment/assessment-resources.service';
 import { EmployerPoolProfileService } from '../src/modules/talent/assessment/employer-pool-profile.service';
 import { PersonalAssessmentService } from '../src/modules/talent/assessment/personal-assessment.service';
 import { RubricScoringService } from '../src/modules/ai/rubric-scoring.service';
@@ -31,10 +33,12 @@ import {
 } from '../src/modules/talent/assessment/personal-assessment.test-fixtures';
 import {
   AssessmentAttempt,
+  AssessmentResource,
   AssessmentResponse,
   AssessmentResult,
   AssessmentType,
   QuestionType,
+  ResourceType,
   TalentQuestionHistory,
 } from '../src/modules/talent/assessment/entities';
 import {
@@ -228,10 +232,14 @@ describe('Advanced assessment (e2e)', () => {
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      controllers: [AdvancedAssessmentController],
+      controllers: [
+        AdvancedAssessmentController,
+        AssessmentResourcesController,
+      ],
       providers: [
         AdvancedAssessmentService,
         AdvancedAssessmentAiService,
+        AssessmentResourcesService,
         {
           provide: getRepositoryToken(TalentProfile),
           useValue: talentProfileRepoMock,
@@ -251,6 +259,19 @@ describe('Advanced assessment (e2e)', () => {
         {
           provide: getRepositoryToken(TalentQuestionHistory),
           useValue: { save: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(AssessmentResource),
+          useValue: {
+            create: jest.fn().mockImplementation((data) => data),
+            save: jest.fn().mockResolvedValue([]),
+            find: jest.fn().mockResolvedValue([]),
+            createQueryBuilder: jest.fn().mockReturnValue({
+              where: jest.fn().mockReturnThis(),
+              orderBy: jest.fn().mockReturnThis(),
+              getMany: jest.fn().mockResolvedValue([]),
+            }),
+          },
         },
         {
           provide: getRepositoryToken(EmployerPoolProfile),
@@ -505,6 +526,274 @@ describe('Advanced assessment (e2e)', () => {
         .post(`/api/v1/talent/assessment/session/${ATTEMPT_ID}/flag`)
         .send({ event_type: 'tab_switch' })
         .expect(403);
+    });
+  });
+
+  // ── GET /api/v1/talent/assessment/resources ────────────────────────────────
+
+  describe('GET /api/v1/talent/assessment/resources', () => {
+    let resourceRepoMock: jest.Mocked<{
+      find: jest.Mock;
+      createQueryBuilder: jest.Mock;
+    }>;
+
+    let resultRepoMock: jest.Mocked<{
+      createQueryBuilder: jest.Mock;
+    }>;
+
+    let profileRepoMock: jest.Mocked<{
+      createQueryBuilder: jest.Mock;
+    }>;
+
+    beforeEach(async () => {
+      // Reset mocks for resources tests
+      const module = app.get(Test.TestingModule);
+      resourceRepoMock = module.get(getRepositoryToken(AssessmentResource));
+      resultRepoMock = module.get(getRepositoryToken(AssessmentResult));
+      profileRepoMock = module.get(getRepositoryToken(TalentProfile));
+    });
+
+    it('returns 200 with resources for completed advanced assessment', async () => {
+      const mockResources = [
+        {
+          id: 'res-1',
+          result_id: 'result-123',
+          title: 'React Hooks Tutorial',
+          description: 'Learn React Hooks fundamentals',
+          type: ResourceType.VIDEO,
+          url: 'https://youtube.com/watch?v=example',
+          is_free: true,
+          competencies: ['react', 'hooks'],
+          estimated_minutes: 30,
+          display_order: 0,
+          created_at: new Date(),
+        },
+        {
+          id: 'res-2',
+          result_id: 'result-123',
+          title: 'TypeScript Best Practices',
+          description: 'Advanced TypeScript patterns',
+          type: ResourceType.ARTICLE,
+          url: 'https://example.com/typescript',
+          is_free: true,
+          competencies: ['typescript'],
+          estimated_minutes: 45,
+          display_order: 1,
+          created_at: new Date(),
+        },
+      ];
+
+      // Mock profile query
+      const profileQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ id: profileStore.id }),
+      };
+      profileRepoMock.createQueryBuilder.mockReturnValue(
+        profileQueryBuilder as never,
+      );
+
+      // Mock result query
+      const resultQueryBuilder = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ id: 'result-123' }),
+      };
+      resultRepoMock.createQueryBuilder.mockReturnValue(
+        resultQueryBuilder as never,
+      );
+
+      // Mock resources
+      resourceRepoMock.find.mockResolvedValue(mockResources as never);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/talent/assessment/resources')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.status).toBe('success');
+          expect(res.body.resources).toBeDefined();
+          expect(Array.isArray(res.body.resources)).toBe(true);
+          expect(res.body.resources).toHaveLength(2);
+          expect(res.body.total).toBe(2);
+          expect(res.body.has_resources).toBe(true);
+          expect(res.body.resources[0]).toMatchObject({
+            title: 'React Hooks Tutorial',
+            type: ResourceType.VIDEO,
+            is_free: true,
+          });
+        });
+    });
+
+    it('returns 200 with empty array when no resources exist', async () => {
+      // Mock profile query
+      const profileQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ id: profileStore.id }),
+      };
+      profileRepoMock.createQueryBuilder.mockReturnValue(
+        profileQueryBuilder as never,
+      );
+
+      // Mock result query
+      const resultQueryBuilder = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ id: 'result-123' }),
+      };
+      resultRepoMock.createQueryBuilder.mockReturnValue(
+        resultQueryBuilder as never,
+      );
+
+      // Mock empty resources
+      resourceRepoMock.find.mockResolvedValue([]);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/talent/assessment/resources')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.status).toBe('success');
+          expect(res.body.resources).toEqual([]);
+          expect(res.body.total).toBe(0);
+          expect(res.body.has_resources).toBe(false);
+        });
+    });
+
+    it('returns 404 when profile not found', async () => {
+      // Mock profile query returning null
+      const profileQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      };
+      profileRepoMock.createQueryBuilder.mockReturnValue(
+        profileQueryBuilder as never,
+      );
+
+      await request(app.getHttpServer())
+        .get('/api/v1/talent/assessment/resources')
+        .expect(404)
+        .expect((res) => {
+          expect(res.body.message).toContain('Talent profile not found');
+        });
+    });
+
+    it('returns 404 when no completed advanced assessment found', async () => {
+      // Mock profile query
+      const profileQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ id: profileStore.id }),
+      };
+      profileRepoMock.createQueryBuilder.mockReturnValue(
+        profileQueryBuilder as never,
+      );
+
+      // Mock result query returning null (no completed assessment)
+      const resultQueryBuilder = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      };
+      resultRepoMock.createQueryBuilder.mockReturnValue(
+        resultQueryBuilder as never,
+      );
+
+      await request(app.getHttpServer())
+        .get('/api/v1/talent/assessment/resources')
+        .expect(404)
+        .expect((res) => {
+          expect(res.body.message).toContain(
+            'No completed advanced assessment found',
+          );
+        });
+    });
+
+    it('returns 403 for employer role', async () => {
+      MockJwtAuthGuard.nextUser = {
+        sub: employerUser.id,
+        email: employerUser.email,
+        role: UserRole.EMPLOYER,
+        onboardingComplete: true,
+      };
+
+      await request(app.getHttpServer())
+        .get('/api/v1/talent/assessment/resources')
+        .expect(403);
+    });
+
+    it('resources are ordered by display_order ascending', async () => {
+      const mockResources = [
+        {
+          id: 'res-1',
+          result_id: 'result-123',
+          title: 'First Resource',
+          description: 'First',
+          type: ResourceType.VIDEO,
+          url: 'https://example.com/1',
+          is_free: true,
+          competencies: ['comp1'],
+          estimated_minutes: 30,
+          display_order: 0,
+          created_at: new Date(),
+        },
+        {
+          id: 'res-2',
+          result_id: 'result-123',
+          title: 'Second Resource',
+          description: 'Second',
+          type: ResourceType.ARTICLE,
+          url: 'https://example.com/2',
+          is_free: false,
+          competencies: ['comp2'],
+          estimated_minutes: 45,
+          display_order: 1,
+          created_at: new Date(),
+        },
+      ];
+
+      const profileQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ id: profileStore.id }),
+      };
+      profileRepoMock.createQueryBuilder.mockReturnValue(
+        profileQueryBuilder as never,
+      );
+
+      const resultQueryBuilder = {
+        innerJoin: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ id: 'result-123' }),
+      };
+      resultRepoMock.createQueryBuilder.mockReturnValue(
+        resultQueryBuilder as never,
+      );
+
+      resourceRepoMock.find.mockResolvedValue(mockResources as never);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/talent/assessment/resources')
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.resources[0].display_order).toBe(0);
+          expect(res.body.resources[1].display_order).toBe(1);
+          expect(res.body.resources[0].title).toBe('First Resource');
+          expect(res.body.resources[1].title).toBe('Second Resource');
+        });
+
+      expect(resourceRepoMock.find).toHaveBeenCalledWith({
+        where: { result_id: 'result-123' },
+        order: { display_order: 'ASC' },
+      });
     });
   });
 });
