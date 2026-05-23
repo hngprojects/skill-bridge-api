@@ -57,3 +57,7 @@ pids
 # Generated advanced assessment question bank (generate locally — not committed)
 data/question-banks/seed-advanced.json
 data/question-banks/seed-advanced.manifest.json
+
+# Generated skill assessment question bank (generate locally — not committed)
+data/question-banks/seed-skill.json
+data/question-banks/seed-skill.manifest.json
