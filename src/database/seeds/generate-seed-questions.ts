@@ -1,6 +1,6 @@
 /**
  * Generates seed.json for the question bank.
- * Run: npx ts-node scripts/generate-seed-questions.ts
+ * Run: npx ts-node src/database/seeds/generate-seed-questions.ts
  *
  * Produces at minimum 25 questions per track+level combo:
  *   - 7 MCQ
@@ -9,8 +9,8 @@
  *   - 3 long_text without scenario keyword (LT-2 work_task)
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const ROLE_CODES: Record<string, string> = {
   FED: 'frontend_developer',
@@ -704,9 +704,19 @@ function generateSeed() {
     const template =
       TRACK_QUESTIONS[track] || generateGenericQuestions(track, roleCode);
 
+    const required = { mcq: 12, short: 16, lt_situational: 5, lt_work_task: 5 };
+    for (const [key, min] of Object.entries(required)) {
+      const actual = (template as Record<string, unknown[]>)[key]?.length ?? 0;
+      if (actual < min) {
+        throw new Error(
+          `Template "${track}" has ${actual} ${key} questions but requires at least ${min}`,
+        );
+      }
+    }
+
     for (const level of LEVELS) {
       // MCQ questions (12+)
-      const mcqCount = Math.min(template.mcq.length, 12);
+      const mcqCount = 12;
       for (let i = 0; i < mcqCount; i++) {
         const mcq = template.mcq[i];
         questions.push({
@@ -733,7 +743,7 @@ function generateSeed() {
       }
 
       // Short text (open_ended_scenario) questions (16+)
-      const shortCount = Math.min(template.short.length, 16);
+      const shortCount = 16;
       for (let i = 0; i < shortCount; i++) {
         const q =
           level === 'junior'
@@ -784,7 +794,7 @@ function generateSeed() {
       }
 
       // Long text SITUATIONAL (question_type contains "scenario") (5+)
-      const sitCount = Math.min(template.lt_situational.length, 5);
+      const sitCount = 5;
       for (let i = 0; i < sitCount; i++) {
         const q =
           level === 'junior'
@@ -837,7 +847,7 @@ function generateSeed() {
       }
 
       // Long text WORK_TASK (5+)
-      const wtCount = Math.min(template.lt_work_task.length, 5);
+      const wtCount = 5;
       for (let i = 0; i < wtCount; i++) {
         const q =
           level === 'junior'
@@ -900,6 +910,7 @@ function generateSeed() {
     'question-banks',
     'seed.json',
   );
+  fs.mkdirSync(path.dirname(outPath), { recursive: true });
   fs.writeFileSync(outPath, JSON.stringify(questions, null, 2));
   console.log(
     `Generated ${questions.length} questions across ${Object.keys(ROLE_CODES).length} tracks × ${LEVELS.length} levels`,
