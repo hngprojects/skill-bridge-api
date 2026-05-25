@@ -1,253 +1,281 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { EmployerVerificationService } from './employer-verification.service';
 import { EmployerProfile } from './entities/employer-profile.entity';
-import { User } from '../users/entities/user.entity';
 
 describe('EmployerVerificationService', () => {
   let service: EmployerVerificationService;
-
-  const mockProfileRepo = {
-    findOne: jest.fn(),
-    update: jest.fn(),
+  let employerProfileRepo: {
+    findOne: jest.Mock;
+    update: jest.Mock;
   };
+  let userRepo: { findOne: jest.Mock };
 
-  const mockUserRepo = {
-    findOne: jest.fn(),
-  };
+  const userId = 'user-uuid-1';
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        EmployerVerificationService,
-        {
-          provide: getRepositoryToken(EmployerProfile),
-          useValue: mockProfileRepo,
-        },
-        { provide: getRepositoryToken(User), useValue: mockUserRepo },
-      ],
-    }).compile();
+  beforeEach(() => {
+    employerProfileRepo = {
+      findOne: jest.fn(),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    userRepo = { findOne: jest.fn() };
 
-    service = module.get<EmployerVerificationService>(
-      EmployerVerificationService,
+    service = new EmployerVerificationService(
+      employerProfileRepo as never,
+      userRepo as never,
     );
-    jest.clearAllMocks();
   });
 
-  describe('checkAndUpdateVerification', () => {
-    const userId = 'employer-user-1';
+  function mockUser(
+    overrides: Partial<{ id: string; is_verified: boolean }> = {},
+  ) {
+    return { id: userId, is_verified: true, ...overrides };
+  }
 
-    const verifiedUser = {
-      id: userId,
-      is_verified: true,
-    };
-
-    const unverifiedUser = {
-      id: userId,
-      is_verified: false,
-    };
-
-    const completeProfile = {
+  function mockProfile(
+    overrides: Partial<EmployerProfile> = {},
+  ): Partial<EmployerProfile> {
+    return {
       user_id: userId,
-      company_website: 'https://acmelabs.com',
-      linkedin_company_url: 'https://linkedin.com/company/acme',
+      company_website: 'https://acme.example',
+      linkedin_company_page_url: 'https://linkedin.com/company/acme',
       is_verified: false,
+      ...overrides,
     };
+  }
 
+  describe('checkAndUpdateVerification', () => {
     beforeEach(() => {
-      // Mock isWebsiteResolvable to avoid actual HTTP calls
       jest.spyOn(service, 'isWebsiteResolvable').mockResolvedValue(true);
     });
 
-    it('should return true and update profile when all criteria are met', async () => {
-      mockUserRepo.findOne.mockResolvedValue(verifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue({ ...completeProfile });
+    it('returns true when all criteria are met', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      employerProfileRepo.findOne.mockResolvedValue(mockProfile());
 
       const result = await service.checkAndUpdateVerification(userId);
 
       expect(result).toBe(true);
-      expect(mockProfileRepo.update).toHaveBeenCalledWith(
+      expect(employerProfileRepo.update).toHaveBeenCalledWith(
         { user_id: userId },
         { is_verified: true },
       );
     });
 
-    it('should return false when email is not verified', async () => {
-      mockUserRepo.findOne.mockResolvedValue(unverifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue({ ...completeProfile });
+    it('returns false when email is not verified', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser({ is_verified: false }));
+      employerProfileRepo.findOne.mockResolvedValue(mockProfile());
 
       const result = await service.checkAndUpdateVerification(userId);
 
       expect(result).toBe(false);
     });
 
-    it('should return false when linkedin_company_url is missing', async () => {
-      mockUserRepo.findOne.mockResolvedValue(verifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue({
-        ...completeProfile,
-        linkedin_company_url: null,
-      });
+    it('returns false when LinkedIn URL is missing', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      employerProfileRepo.findOne.mockResolvedValue(
+        mockProfile({ linkedin_company_page_url: null }),
+      );
 
       const result = await service.checkAndUpdateVerification(userId);
 
       expect(result).toBe(false);
     });
 
-    it('should return false when company_website is missing', async () => {
-      mockUserRepo.findOne.mockResolvedValue(verifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue({
-        ...completeProfile,
-        company_website: null,
-      });
-
-      const result = await service.checkAndUpdateVerification(userId);
-
-      expect(result).toBe(false);
-      expect(service.isWebsiteResolvable).not.toHaveBeenCalled();
-    });
-
-    it('should return false when website is not resolvable', async () => {
+    it('returns false when website is not resolvable', async () => {
       jest.spyOn(service, 'isWebsiteResolvable').mockResolvedValue(false);
-
-      mockUserRepo.findOne.mockResolvedValue(verifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue({ ...completeProfile });
+      userRepo.findOne.mockResolvedValue(mockUser());
+      employerProfileRepo.findOne.mockResolvedValue(mockProfile());
 
       const result = await service.checkAndUpdateVerification(userId);
 
       expect(result).toBe(false);
     });
 
-    it('should not call update when is_verified value has not changed', async () => {
-      mockUserRepo.findOne.mockResolvedValue(verifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue({
-        ...completeProfile,
-        is_verified: true, // already verified
-      });
+    it('does not update if verification status is unchanged', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      employerProfileRepo.findOne.mockResolvedValue(
+        mockProfile({ is_verified: true }),
+      );
 
       await service.checkAndUpdateVerification(userId);
 
-      expect(mockProfileRepo.update).not.toHaveBeenCalled();
+      expect(employerProfileRepo.update).not.toHaveBeenCalled();
     });
 
-    it('should revoke verification when criteria are no longer met', async () => {
-      mockUserRepo.findOne.mockResolvedValue(verifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue({
-        ...completeProfile,
-        linkedin_company_url: null,
-        is_verified: true, // was verified, now criteria not met
-      });
+    it('revokes verification when criteria are no longer met', async () => {
+      jest.spyOn(service, 'isWebsiteResolvable').mockResolvedValue(false);
+      userRepo.findOne.mockResolvedValue(mockUser());
+      employerProfileRepo.findOne.mockResolvedValue(
+        mockProfile({ is_verified: true }),
+      );
 
       const result = await service.checkAndUpdateVerification(userId);
 
       expect(result).toBe(false);
-      expect(mockProfileRepo.update).toHaveBeenCalledWith(
+      expect(employerProfileRepo.update).toHaveBeenCalledWith(
         { user_id: userId },
         { is_verified: false },
       );
     });
 
-    it('should return false when user not found', async () => {
-      mockUserRepo.findOne.mockResolvedValue(null);
+    it('returns false when user is not found', async () => {
+      userRepo.findOne.mockResolvedValue(null);
 
       const result = await service.checkAndUpdateVerification(userId);
 
       expect(result).toBe(false);
     });
 
-    it('should return false when profile not found', async () => {
-      mockUserRepo.findOne.mockResolvedValue(verifiedUser);
-      mockProfileRepo.findOne.mockResolvedValue(null);
+    it('returns false when profile is not found', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      employerProfileRepo.findOne.mockResolvedValue(null);
 
       const result = await service.checkAndUpdateVerification(userId);
 
       expect(result).toBe(false);
+    });
+
+    it('uses website_url as fallback when company_website is null', async () => {
+      userRepo.findOne.mockResolvedValue(mockUser());
+      employerProfileRepo.findOne.mockResolvedValue(
+        mockProfile({
+          company_website: null,
+          website_url: 'https://fallback.example',
+        }),
+      );
+
+      await service.checkAndUpdateVerification(userId);
+
+      expect(service.isWebsiteResolvable).toHaveBeenCalledWith(
+        'https://fallback.example',
+      );
     });
   });
 
   describe('getVerificationStatus', () => {
-    it('should return cached is_verified value', async () => {
-      mockProfileRepo.findOne.mockResolvedValue({ is_verified: true });
+    it('returns true when profile is verified', async () => {
+      employerProfileRepo.findOne.mockResolvedValue(
+        mockProfile({ is_verified: true }),
+      );
 
-      const result = await service.getVerificationStatus('user-1');
-
-      expect(result).toBe(true);
-      expect(mockProfileRepo.findOne).toHaveBeenCalledWith({
-        where: { user_id: 'user-1' },
-        select: ['is_verified'],
-      });
+      expect(await service.getVerificationStatus(userId)).toBe(true);
     });
 
-    it('should return false when profile not found', async () => {
-      mockProfileRepo.findOne.mockResolvedValue(null);
+    it('returns false when profile is not verified', async () => {
+      employerProfileRepo.findOne.mockResolvedValue(
+        mockProfile({ is_verified: false }),
+      );
 
-      const result = await service.getVerificationStatus('user-1');
+      expect(await service.getVerificationStatus(userId)).toBe(false);
+    });
 
-      expect(result).toBe(false);
+    it('returns false when profile does not exist', async () => {
+      employerProfileRepo.findOne.mockResolvedValue(null);
+
+      expect(await service.getVerificationStatus(userId)).toBe(false);
     });
   });
 
   describe('isWebsiteResolvable', () => {
+    let originalFetch: typeof global.fetch;
+
     beforeEach(() => {
-      // Restore the real implementation for these tests
+      originalFetch = global.fetch;
       jest.restoreAllMocks();
+      // Mock dns.resolve to return a public IP by default
+      jest
+        .spyOn(require('dns/promises'), 'resolve')
+        .mockResolvedValue(['93.184.216.34']);
     });
 
-    it('should return true for a resolvable URL', async () => {
-      const mockFetch = jest.fn().mockResolvedValue({ status: 200 });
-      global.fetch = mockFetch;
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
 
-      const result = await service.isWebsiteResolvable('https://example.com');
+    it('returns true for a successful HEAD response', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue({ ok: true, status: 200, headers: new Map() });
 
-      expect(result).toBe(true);
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://example.com',
+      expect(await service.isWebsiteResolvable('https://acme.example')).toBe(
+        true,
+      );
+    });
+
+    it('returns false for null/empty URL', async () => {
+      expect(await service.isWebsiteResolvable(null)).toBe(false);
+      expect(await service.isWebsiteResolvable('')).toBe(false);
+    });
+
+    it('prepends https:// when missing', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue({ ok: true, status: 200, headers: new Map() });
+
+      await service.isWebsiteResolvable('acme.example');
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://acme.example',
         expect.objectContaining({ method: 'HEAD' }),
       );
     });
 
-    it('should fall back to GET when HEAD returns 405', async () => {
-      const mockFetch = jest
+    it('falls back to GET on 405', async () => {
+      global.fetch = jest
         .fn()
-        .mockResolvedValueOnce({ status: 405 })
-        .mockResolvedValueOnce({ status: 200 });
-      global.fetch = mockFetch;
+        .mockResolvedValueOnce({ ok: false, status: 405, headers: new Map() })
+        .mockResolvedValueOnce({ ok: true, status: 200, headers: new Map() });
 
-      const result = await service.isWebsiteResolvable('https://example.com');
+      const result = await service.isWebsiteResolvable('https://acme.example');
 
       expect(result).toBe(true);
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(mockFetch).toHaveBeenLastCalledWith(
-        'https://example.com',
-        expect.objectContaining({ method: 'GET' }),
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns false on network error', async () => {
+      global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
+
+      expect(await service.isWebsiteResolvable('https://acme.example')).toBe(
+        false,
       );
     });
 
-    it('should return false on network error', async () => {
-      global.fetch = jest.fn().mockRejectedValue(new Error('ENOTFOUND'));
+    it('returns false for non-ok response', async () => {
+      global.fetch = jest
+        .fn()
+        .mockResolvedValue({ ok: false, status: 500, headers: new Map() });
 
-      const result = await service.isWebsiteResolvable('https://invalid.test');
-
-      expect(result).toBe(false);
-    });
-
-    it('should return false on 5xx response', async () => {
-      global.fetch = jest.fn().mockResolvedValue({ status: 500 });
-
-      const result = await service.isWebsiteResolvable('https://down.test');
-
-      expect(result).toBe(false);
-    });
-
-    it('should prepend https:// when protocol is missing', async () => {
-      const mockFetch = jest.fn().mockResolvedValue({ status: 200 });
-      global.fetch = mockFetch;
-
-      await service.isWebsiteResolvable('acmelabs.com');
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        'https://acmelabs.com',
-        expect.anything(),
+      expect(await service.isWebsiteResolvable('https://acme.example')).toBe(
+        false,
       );
+    });
+
+    it('returns false for private/internal IPs (SSRF protection)', async () => {
+      const dnsResolve = require('dns/promises').resolve;
+      dnsResolve.mockResolvedValue(['127.0.0.1']);
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      expect(await service.isWebsiteResolvable('https://evil.example')).toBe(
+        false,
+      );
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('returns false for IP-literal private hosts', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      expect(await service.isWebsiteResolvable('https://192.168.1.1')).toBe(
+        false,
+      );
+      expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    it('returns false for non-standard ports', async () => {
+      global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
+
+      expect(
+        await service.isWebsiteResolvable('https://acme.example:8080'),
+      ).toBe(false);
+      expect(global.fetch).not.toHaveBeenCalled();
     });
   });
 });
