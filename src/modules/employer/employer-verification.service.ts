@@ -5,6 +5,7 @@ import * as dns from 'dns/promises';
 import * as net from 'net';
 import { EmployerProfile } from './entities/employer-profile.entity';
 import { User } from '../users/entities/user.entity';
+import { ErrorMessages, ForbiddenError } from '../../shared';
 
 /** IP ranges that must never be reached by server-side fetches. */
 const BLOCKED_CIDRS: Array<{ prefix: bigint; mask: bigint }> = [
@@ -117,6 +118,19 @@ export class EmployerVerificationService {
       where: { user_id: employerUserId },
     });
     return profile?.is_verified ?? false;
+  }
+
+  /**
+   * Throws ForbiddenError if the employer is not verified.
+   * Use as a gate before privileged actions (offers, contact requests).
+   */
+  async assertEmployerVerified(employerUserId: string): Promise<void> {
+    const verified = await this.getVerificationStatus(employerUserId);
+    if (!verified) {
+      throw new ForbiddenError(
+        ErrorMessages.EMPLOYER_VERIFICATION.NOT_VERIFIED,
+      );
+    }
   }
 
   /**
