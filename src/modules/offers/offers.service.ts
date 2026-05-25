@@ -11,6 +11,7 @@ import { EmployerPoolProfile } from '../talent/entities/employer-pool-profile.en
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { NotificationType } from '../notifications/notification-type.enum';
+import { EmployerVerificationService } from '../employer/employer-verification.service';
 import { Offer, OfferStatus } from './entities/offer.entity';
 import { OfferDistributionLog } from './entities/offer-distribution-log.entity';
 import { CreateOfferDto } from './dto/create-offer.dto';
@@ -51,6 +52,7 @@ export class OffersService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationDispatch: NotificationDispatchService,
+    private readonly verificationService: EmployerVerificationService,
   ) {
     this.monthlyCap =
       parseInt(process.env.OFFERS_MONTHLY_CAP ?? '', 10) || DEFAULT_MONTHLY_CAP;
@@ -60,6 +62,8 @@ export class OffersService {
     employerUserId: string,
     dto: CreateOfferDto,
   ): Promise<Offer> {
+    await this.verificationService.assertEmployerVerified(employerUserId);
+
     // Validate candidate is Job Ready
     const poolProfile = await this.poolProfileRepo.findOne({
       where: { candidate_id: dto.candidateUserId },
