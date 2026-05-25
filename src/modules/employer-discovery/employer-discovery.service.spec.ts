@@ -7,6 +7,7 @@ import { EmployerContactRequest } from './entities/employer-contact-request.enti
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { EmployerVerificationService } from '../employer/employer-verification.service';
+import { ForbiddenError } from '../../shared';
 
 describe('EmployerDiscoveryService', () => {
   let service: EmployerDiscoveryService;
@@ -175,7 +176,7 @@ describe('EmployerDiscoveryService', () => {
   describe('contactCandidate', () => {
     it('should throw ForbiddenError if employer is not verified', async () => {
       mockVerificationService.assertEmployerVerified.mockRejectedValue(
-        new Error(
+        new ForbiddenError(
           'Complete your company profile to start contacting candidates.',
         ),
       );

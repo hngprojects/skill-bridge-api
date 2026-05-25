@@ -7,6 +7,7 @@ import { EmployerPoolProfile } from '../talent/entities/employer-pool-profile.en
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { EmployerVerificationService } from '../employer/employer-verification.service';
+import { ForbiddenError } from '../../shared';
 
 describe('OffersService', () => {
   let service: OffersService;
@@ -125,7 +126,7 @@ describe('OffersService', () => {
 
     it('should throw ForbiddenError if employer is not verified', async () => {
       mockVerificationService.assertEmployerVerified.mockRejectedValue(
-        new Error(
+        new ForbiddenError(
           'Complete your company profile to start contacting candidates.',
         ),
       );
