@@ -24,17 +24,17 @@ export type OfferListResult = {
   total: number;
   page: number;
   limit: number;
-  totalPages: number;
+  total_pages: number;
 };
 
 export type OfferAnalytics = {
-  offersThisMonth: number;
-  monthlyCap: number;
+  offers_this_month: number;
+  monthly_cap: number;
   remaining: number;
-  acceptedCount: number;
-  declinedCount: number;
-  pendingCount: number;
-  expiredCount: number;
+  accepted_count: number;
+  declined_count: number;
+  pending_count: number;
+  expired_count: number;
 };
 
 @Injectable()
@@ -66,7 +66,7 @@ export class OffersService {
 
     // Validate candidate is Job Ready
     const poolProfile = await this.poolProfileRepo.findOne({
-      where: { candidate_id: dto.candidateUserId },
+      where: { candidate_id: dto.candidate_user_id },
     });
 
     if (!poolProfile) {
@@ -80,7 +80,7 @@ export class OffersService {
     }
 
     // Enforce send-cap atomically via transaction
-    const expiresInDays = dto.expiresInDays ?? 14;
+    const expiresInDays = dto.expires_in_days ?? 14;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + expiresInDays);
 
@@ -111,9 +111,9 @@ export class OffersService {
 
       const created = await manager.save(Offer, {
         employer_user_id: employerUserId,
-        candidate_user_id: dto.candidateUserId,
+        candidate_user_id: dto.candidate_user_id,
         employer_pool_profile_id: poolProfile.id,
-        role_title: dto.roleTitle,
+        role_title: dto.role_title,
         message: dto.message,
         status: OfferStatus.PENDING,
         expires_at: expiresAt,
@@ -138,12 +138,12 @@ export class OffersService {
     try {
       await this.notificationDispatch.dispatch(
         NotificationType.OFFER_RECEIVED,
-        dto.candidateUserId,
+        dto.candidate_user_id,
         {
           offerId: offer.id,
           employerUserId,
           employerName,
-          roleTitle: dto.roleTitle,
+          roleTitle: dto.role_title,
         },
       );
     } catch (error) {
@@ -186,7 +186,7 @@ export class OffersService {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      total_pages: Math.ceil(total / limit),
     };
   }
 
@@ -221,7 +221,7 @@ export class OffersService {
       total,
       page,
       limit,
-      totalPages: Math.ceil(total / limit),
+      total_pages: Math.ceil(total / limit),
     };
   }
 
@@ -379,13 +379,13 @@ export class OffersService {
       ]);
 
     return {
-      offersThisMonth: monthlyCount,
-      monthlyCap: this.monthlyCap,
+      offers_this_month: monthlyCount,
+      monthly_cap: this.monthlyCap,
       remaining: Math.max(0, this.monthlyCap - monthlyCount),
-      acceptedCount,
-      declinedCount,
-      pendingCount,
-      expiredCount,
+      accepted_count: acceptedCount,
+      declined_count: declinedCount,
+      pending_count: pendingCount,
+      expired_count: expiredCount,
     };
   }
 

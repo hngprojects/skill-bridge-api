@@ -77,10 +77,10 @@ describe('OffersService', () => {
 
   describe('createOffer', () => {
     const dto = {
-      candidateUserId: 'candidate-1',
-      roleTitle: 'Frontend Developer',
+      candidate_user_id: 'candidate-1',
+      role_title: 'Frontend Developer',
       message: 'We would like to offer you a position',
-      expiresInDays: 14,
+      expires_in_days: 14,
     };
 
     it('should create an offer for a job_ready candidate', async () => {
@@ -293,11 +293,11 @@ describe('OffersService', () => {
 
       const result = await service.getAnalytics('employer-1');
 
-      expect(result.offersThisMonth).toBe(5);
-      expect(result.acceptedCount).toBe(3);
-      expect(result.declinedCount).toBe(1);
-      expect(result.pendingCount).toBe(2);
-      expect(result.expiredCount).toBe(0);
+      expect(result.offers_this_month).toBe(5);
+      expect(result.accepted_count).toBe(3);
+      expect(result.declined_count).toBe(1);
+      expect(result.pending_count).toBe(2);
+      expect(result.expired_count).toBe(0);
       expect(result.remaining).toBe(45);
     });
   });
