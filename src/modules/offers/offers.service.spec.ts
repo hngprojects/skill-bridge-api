@@ -6,6 +6,7 @@ import { OfferDistributionLog } from './entities/offer-distribution-log.entity';
 import { EmployerPoolProfile } from '../talent/entities/employer-pool-profile.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
+import { EmployerVerificationService } from '../employer/employer-verification.service';
 
 describe('OffersService', () => {
   let service: OffersService;
@@ -39,6 +40,10 @@ describe('OffersService', () => {
     dispatch: jest.fn(),
   };
 
+  const mockVerificationService = {
+    assertEmployerVerified: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -57,11 +62,16 @@ describe('OffersService', () => {
           provide: NotificationDispatchService,
           useValue: mockNotificationDispatch,
         },
+        {
+          provide: EmployerVerificationService,
+          useValue: mockVerificationService,
+        },
       ],
     }).compile();
 
     service = module.get<OffersService>(OffersService);
     jest.clearAllMocks();
+    mockVerificationService.assertEmployerVerified.mockResolvedValue(undefined);
   });
 
   describe('createOffer', () => {
@@ -111,6 +121,19 @@ describe('OffersService', () => {
       expect(result.id).toBe('offer-1');
       expect(mockOfferRepo.manager.transaction).toHaveBeenCalled();
       expect(mockNotificationDispatch.dispatch).toHaveBeenCalled();
+    });
+
+    it('should throw ForbiddenError if employer is not verified', async () => {
+      mockVerificationService.assertEmployerVerified.mockRejectedValue(
+        new Error(
+          'Complete your company profile to start contacting candidates.',
+        ),
+      );
+
+      await expect(service.createOffer('employer-1', dto)).rejects.toThrow(
+        'Complete your company profile to start contacting candidates.',
+      );
+      expect(mockPoolProfileRepo.findOne).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundError if candidate not in pool', async () => {

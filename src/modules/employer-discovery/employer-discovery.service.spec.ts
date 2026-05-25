@@ -6,6 +6,7 @@ import { EmployerSavedCandidate } from './entities/employer-saved-candidate.enti
 import { EmployerContactRequest } from './entities/employer-contact-request.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
+import { EmployerVerificationService } from '../employer/employer-verification.service';
 
 describe('EmployerDiscoveryService', () => {
   let service: EmployerDiscoveryService;
@@ -34,6 +35,10 @@ describe('EmployerDiscoveryService', () => {
     dispatch: jest.fn(),
   };
 
+  const mockVerificationService = {
+    assertEmployerVerified: jest.fn().mockResolvedValue(undefined),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -58,11 +63,16 @@ describe('EmployerDiscoveryService', () => {
           provide: NotificationDispatchService,
           useValue: mockNotificationDispatch,
         },
+        {
+          provide: EmployerVerificationService,
+          useValue: mockVerificationService,
+        },
       ],
     }).compile();
 
     service = module.get<EmployerDiscoveryService>(EmployerDiscoveryService);
     jest.clearAllMocks();
+    mockVerificationService.assertEmployerVerified.mockResolvedValue(undefined);
   });
 
   describe('getCandidateProfile', () => {
@@ -163,6 +173,21 @@ describe('EmployerDiscoveryService', () => {
   });
 
   describe('contactCandidate', () => {
+    it('should throw ForbiddenError if employer is not verified', async () => {
+      mockVerificationService.assertEmployerVerified.mockRejectedValue(
+        new Error(
+          'Complete your company profile to start contacting candidates.',
+        ),
+      );
+
+      await expect(
+        service.contactCandidate('employer-1', 'user-1', 'Hello'),
+      ).rejects.toThrow(
+        'Complete your company profile to start contacting candidates.',
+      );
+      expect(mockPoolProfileRepo.findOne).not.toHaveBeenCalled();
+    });
+
     it('should create contact request and trigger notification', async () => {
       const pool = { id: 'pool-1', candidate_id: 'user-1', tier: 'job_ready' };
       mockPoolProfileRepo.findOne.mockResolvedValue(pool);
