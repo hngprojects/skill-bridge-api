@@ -101,8 +101,8 @@ describe('OffersService', () => {
               .mockResolvedValueOnce({
                 id: 'offer-1',
                 employer_user_id: 'employer-1',
-                candidate_user_id: dto.candidateUserId,
-                role_title: dto.roleTitle,
+                candidate_user_id: dto.candidate_user_id,
+                role_title: dto.role_title,
                 status: OfferStatus.PENDING,
               })
               .mockResolvedValueOnce({ id: 'log-1' }),
