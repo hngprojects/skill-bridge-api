@@ -8,6 +8,7 @@ import {
   TooManyRequestsError,
 } from '../../shared';
 import { EmployerPoolProfile } from '../talent/entities/employer-pool-profile.entity';
+import { EmployerProfile } from '../employer/entities/employer-profile.entity';
 import { User } from '../users/entities/user.entity';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { NotificationType } from '../notifications/notification-type.enum';
@@ -21,6 +22,18 @@ const DEFAULT_MONTHLY_CAP = 50;
 
 export type OfferListResult = {
   offers: Offer[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+};
+
+export type EnrichedOffer = Offer & {
+  is_employer_verified: boolean;
+};
+
+export type EnrichedOfferListResult = {
+  offers: EnrichedOffer[];
   total: number;
   page: number;
   limit: number;
@@ -49,6 +62,8 @@ export class OffersService {
     private readonly distributionLogRepo: Repository<OfferDistributionLog>,
     @InjectRepository(EmployerPoolProfile)
     private readonly poolProfileRepo: Repository<EmployerPoolProfile>,
+    @InjectRepository(EmployerProfile)
+    private readonly employerProfileRepo: Repository<EmployerProfile>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationDispatch: NotificationDispatchService,
@@ -193,7 +208,7 @@ export class OffersService {
   async listCandidateOffers(
     candidateUserId: string,
     query: ListOffersQueryDto,
-  ): Promise<OfferListResult> {
+  ): Promise<EnrichedOfferListResult> {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
 
@@ -216,8 +231,25 @@ export class OffersService {
       relations: ['employer'],
     });
 
+    // Enrich with employer verification status
+    const employerUserIds = [...new Set(offers.map((o) => o.employer_user_id))];
+    const profiles = employerUserIds.length
+      ? await this.employerProfileRepo.find({
+          where: employerUserIds.map((id) => ({ user_id: id })),
+          select: ['user_id', 'is_verified'],
+        })
+      : [];
+    const verifiedMap = new Map(
+      profiles.map((p) => [p.user_id, p.is_verified]),
+    );
+
+    const enrichedOffers = offers.map((offer) => ({
+      ...offer,
+      is_employer_verified: verifiedMap.get(offer.employer_user_id) ?? false,
+    }));
+
     return {
-      offers,
+      offers: enrichedOffers,
       total,
       page,
       limit,
@@ -244,7 +276,7 @@ export class OffersService {
   async getOfferForCandidate(
     candidateUserId: string,
     offerId: string,
-  ): Promise<Offer> {
+  ): Promise<EnrichedOffer> {
     const offer = await this.offerRepo.findOne({
       where: { id: offerId, candidate_user_id: candidateUserId },
       relations: ['employer'],
@@ -254,7 +286,16 @@ export class OffersService {
       throw new NotFoundError('Offer not found');
     }
 
-    return this.checkAndUpdateExpiry(offer);
+    const checked = await this.checkAndUpdateExpiry(offer);
+    const profile = await this.employerProfileRepo.findOne({
+      where: { user_id: checked.employer_user_id },
+      select: ['is_verified'],
+    });
+
+    return {
+      ...checked,
+      is_employer_verified: profile?.is_verified ?? false,
+    };
   }
 
   async respondToOffer(
@@ -387,6 +428,34 @@ export class OffersService {
       pending_count: pendingCount,
       expired_count: expiredCount,
     };
+  }
+
+  async markHireComplete(
+    employerUserId: string,
+    offerId: string,
+  ): Promise<Offer> {
+    const offer = await this.offerRepo.findOne({
+      where: { id: offerId, employer_user_id: employerUserId },
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer not found');
+    }
+
+    if (offer.status !== OfferStatus.ACCEPTED) {
+      throw new BadRequestError('Only accepted offers can be marked as hired');
+    }
+
+    await this.offerRepo.update(offer.id, { status: OfferStatus.HIRED });
+    offer.status = OfferStatus.HIRED;
+
+    await this.employerProfileRepo.increment(
+      { user_id: employerUserId },
+      'hire_count',
+      1,
+    );
+
+    return offer;
   }
 
   private async getDistributionCount(employerUserId: string): Promise<number> {
