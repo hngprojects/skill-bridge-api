@@ -70,4 +70,7 @@ export const SuccessMessages = {
     ACCEPTED: 'Offer accepted',
     DECLINED: 'Offer declined',
   },
+  EMPLOYER_VERIFICATION: {
+    VERIFIED: 'Employer verification complete',
+  },
 } as const;
