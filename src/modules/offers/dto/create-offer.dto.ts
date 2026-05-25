@@ -15,13 +15,13 @@ export class CreateOfferDto {
   @ApiProperty({ format: 'uuid', description: 'Candidate user ID' })
   @IsNotEmpty()
   @IsUUID()
-  candidate_user_id: string;
+  candidateUserId: string;
 
   @ApiProperty({ description: 'Job role title' })
   @IsNotEmpty()
   @IsString()
   @MaxLength(255)
-  role_title: string;
+  roleTitle: string;
 
   @ApiProperty({ description: 'Offer message / description' })
   @IsNotEmpty()
@@ -39,5 +39,5 @@ export class CreateOfferDto {
   @IsInt()
   @Min(1)
   @Max(90)
-  expires_in_days?: number = 14;
+  expiresInDays?: number = 14;
 }

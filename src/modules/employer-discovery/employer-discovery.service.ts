@@ -12,16 +12,16 @@ import { NotificationDispatchService } from '../notifications/notification-dispa
 import { NotificationType } from '../notifications/notification-type.enum';
 
 export type CandidateCard = {
-  user_id: string;
-  full_name: string;
-  role_track: string | null;
+  userId: string;
+  fullName: string;
+  roleTrack: string | null;
   tier: string;
   availability: string | null;
-  verified_at: Date;
+  verifiedAt: Date;
   score: number;
-  strong_competencies: string[] | null;
-  share_token: string | null;
-  is_saved: boolean;
+  strongCompetencies: string[] | null;
+  shareToken: string | null;
+  isSaved: boolean;
 };
 
 export type DiscoveryListResult = {
@@ -29,7 +29,7 @@ export type DiscoveryListResult = {
   total: number;
   page: number;
   limit: number;
-  total_pages: number;
+  totalPages: number;
 };
 
 type CandidateRawRow = {
@@ -81,8 +81,8 @@ export class EmployerDiscoveryService {
       .innerJoin(User, 'u', 'u.id = pool.candidate_id')
       .where('pool.tier = :tier', { tier: 'job_ready' });
 
-    if (query.role_track) {
-      qb.andWhere('pool.track = :roleTrack', { roleTrack: query.role_track });
+    if (query.roleTrack) {
+      qb.andWhere('pool.track = :roleTrack', { roleTrack: query.roleTrack });
     }
 
     if (query.availability) {
@@ -125,16 +125,16 @@ export class EmployerDiscoveryService {
     const savedMap = await this.getSavedMap(employerUserId, candidateIds);
 
     const candidates: CandidateCard[] = rawResults.map((r) => ({
-      user_id: r.userId,
-      full_name: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
-      role_track: r.roleTrack,
+      userId: r.userId,
+      fullName: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
+      roleTrack: r.roleTrack,
       tier: r.tier,
       availability: r.availability,
-      verified_at: r.verifiedAt,
+      verifiedAt: r.verifiedAt,
       score: r.score,
-      strong_competencies: r.strongCompetencies,
-      share_token: r.shareToken,
-      is_saved: savedMap.has(r.userId),
+      strongCompetencies: r.strongCompetencies,
+      shareToken: r.shareToken,
+      isSaved: savedMap.has(r.userId),
     }));
 
     return {
@@ -142,7 +142,7 @@ export class EmployerDiscoveryService {
       total,
       page,
       limit,
-      total_pages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -262,16 +262,16 @@ export class EmployerDiscoveryService {
       .getRawMany();
 
     const candidates: CandidateCard[] = rawResults.map((r) => ({
-      user_id: r.userId,
-      full_name: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
-      role_track: r.roleTrack,
+      userId: r.userId,
+      fullName: `${r.firstName ?? ''} ${r.lastName ?? ''}`.trim(),
+      roleTrack: r.roleTrack,
       tier: r.tier,
       availability: r.availability,
-      verified_at: r.verifiedAt,
+      verifiedAt: r.verifiedAt,
       score: r.score,
-      strong_competencies: r.strongCompetencies,
-      share_token: r.shareToken,
-      is_saved: true,
+      strongCompetencies: r.strongCompetencies,
+      shareToken: r.shareToken,
+      isSaved: true,
     }));
 
     return {
@@ -279,7 +279,7 @@ export class EmployerDiscoveryService {
       total,
       page,
       limit,
-      total_pages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / limit),
     };
   }
 

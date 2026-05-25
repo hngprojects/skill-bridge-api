@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { EmployerPoolProfile } from '../talent/entities/employer-pool-profile.entity';
 import { User } from '../users/entities/user.entity';
-import { EmployerProfile } from '../employer/entities/employer-profile.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EmployerModule } from '../employer/employer.module';
 import { Offer } from './entities/offer.entity';
@@ -16,7 +15,6 @@ import { OffersService } from './offers.service';
       Offer,
       OfferDistributionLog,
       EmployerPoolProfile,
-      EmployerProfile,
       User,
     ]),
     NotificationsModule,
