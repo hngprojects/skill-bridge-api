@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../shared';
 import { EmployerPoolProfile } from '../talent/entities/employer-pool-profile.entity';
 import { User } from '../users/entities/user.entity';
+import { EmployerVerificationService } from '../employer/employer-verification.service';
 import { EmployerContactRequest } from './entities/employer-contact-request.entity';
 import { EmployerSavedCandidate } from './entities/employer-saved-candidate.entity';
 import { DiscoveryCandidatesQueryDto } from './dto/discovery-candidates-query.dto';
@@ -64,6 +65,7 @@ export class EmployerDiscoveryService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly notificationDispatch: NotificationDispatchService,
+    private readonly verificationService: EmployerVerificationService,
   ) {}
 
   async discoverCandidates(
@@ -286,6 +288,8 @@ export class EmployerDiscoveryService {
     candidateUserId: string,
     message: string,
   ): Promise<{ status: string; message: string }> {
+    await this.verificationService.assertEmployerVerified(employerUserId);
+
     const poolProfile = await this.poolProfileRepo.findOne({
       where: { candidate_id: candidateUserId },
     });
