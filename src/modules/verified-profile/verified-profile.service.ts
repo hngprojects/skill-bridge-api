@@ -196,6 +196,8 @@ export class VerifiedProfileService {
       latestAdvancedResult?.guidance_report,
     );
 
+    const hasValidatedLevel =
+      profile.validated_level != null || poolProfile?.verified_level != null;
     const validatedLevel =
       profile.validated_level ??
       (poolProfile?.verified_level as VerifiedLevel | undefined) ??
@@ -239,6 +241,7 @@ export class VerifiedProfileService {
     const aboutTags = this.buildAboutTags(
       personalAnswers,
       seniorityBadge,
+      hasValidatedLevel,
       tierLabel,
       poolProfile,
       profile.availability_status,
@@ -777,9 +780,15 @@ export class VerifiedProfileService {
     return { competencyScores, strongCompetencies };
   }
 
+  /**
+   * Invariant: seniorityBadge and the experience label are mutually exclusive.
+   * When a validated level exists it is authoritative; the self-reported
+   * years_experience is redundant and contradictory alongside it.
+   */
   private buildAboutTags(
     personalAnswers: Record<string, unknown>,
     seniorityBadge: string | undefined,
+    hasValidatedLevel: boolean,
     tierLabel: string | undefined,
     poolProfile?: EmployerPoolProfile | null,
     profileAvailabilityStatus?: string | null,
@@ -794,7 +803,9 @@ export class VerifiedProfileService {
       ...resolveWorkArrangementLabels(
         personalAnswers.work_arrangement_preference,
       ),
-      resolveExperienceLabel(personalAnswers.years_experience),
+      hasValidatedLevel
+        ? undefined
+        : resolveExperienceLabel(personalAnswers.years_experience),
       jobSearchStatus !== 'not_looking'
         ? resolveAvailabilityLabel(
             poolProfile?.availability ?? personalAnswers.availability,
