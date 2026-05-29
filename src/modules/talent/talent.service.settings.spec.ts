@@ -158,6 +158,25 @@ describe('TalentService settings', () => {
     });
   });
 
+  it('includes resume_filename in getSettings profile data', async () => {
+    const profile = Object.assign(new TalentProfile(), {
+      id: 'profile-1',
+      user_id: userId,
+      resume_url: 'https://cdn.example.com/resumes/uuid.pdf',
+      resume_filename: 'my-cv-2026.pdf',
+      availability_status: TalentAvailabilityStatus.OPEN_TO_OPPORTUNITIES,
+      is_published: false,
+      status: 'pending',
+      profile_verified: false,
+    });
+    talentProfileRepository.findOne.mockResolvedValue(profile);
+
+    const result = await service.getSettings(userId);
+
+    expect(result.profile.resume_filename).toBe('my-cv-2026.pdf');
+    expect(result.profile.resume_url).toBe('https://cdn.example.com/resumes/uuid.pdf');
+  });
+
   describe('updateResume()', () => {
     const mockFile = {
       originalname: 'my-cv-2026.pdf',
