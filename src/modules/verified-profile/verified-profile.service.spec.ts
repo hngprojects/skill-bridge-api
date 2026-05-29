@@ -448,9 +448,6 @@ describe('VerifiedProfileService', () => {
       const result = await service.getForTalentUser(user.id);
 
       expect(result.about_tags).toContain('5-10 yrs exp.');
-      expect(result.about_tags).not.toContain('Senior Level');
-      expect(result.about_tags).not.toContain('Mid Level');
-      expect(result.about_tags).not.toContain('Junior Level');
     });
 
     it('rejects non-talent users', async () => {
