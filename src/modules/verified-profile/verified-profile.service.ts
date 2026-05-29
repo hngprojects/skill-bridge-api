@@ -803,16 +803,14 @@ export class VerifiedProfileService {
       ...resolveWorkArrangementLabels(
         personalAnswers.work_arrangement_preference,
       ),
-      // Omit the self-reported experience label when a persisted validated level
-      // exists — showing both would contradict (e.g. "Senior Level, 1-3 yrs").
-      // Gate on hasValidatedLevel, not seniorityBadge, since the latter is always
-      // set (JUNIOR fallback) even when no real validated level is stored.
       hasValidatedLevel
         ? undefined
         : resolveExperienceLabel(personalAnswers.years_experience),
-      resolveAvailabilityLabel(
-        poolProfile?.availability ?? personalAnswers.availability,
-      ),
+      jobSearchStatus !== 'not_looking'
+        ? resolveAvailabilityLabel(
+            poolProfile?.availability ?? personalAnswers.availability,
+          )
+        : undefined,
     ]);
   }
 
