@@ -16,10 +16,15 @@ import {
 import { ErrorMessages } from '../../shared';
 import { AI_RESOURCE_CONSTANTS } from './ai-resources.constants';
 
+interface GenerationLock {
+  promise: Promise<AiLearningResource>;
+  isBackground: boolean;
+}
+
 @Injectable()
 export class AiResourcesService {
   private readonly logger = new Logger(AiResourcesService.name);
-  private generationLocks = new Map<string, Promise<AiLearningResource>>();
+  private generationLocks = new Map<string, GenerationLock>();
 
   constructor(
     @InjectRepository(TalentProfile)
@@ -64,7 +69,10 @@ export class AiResourcesService {
       thresholdGroup,
       AI_RESOURCE_CONSTANTS.BACKGROUND_TIMEOUT_MS,
     );
-    this.generationLocks.set(cacheKey, generationPromise);
+    this.generationLocks.set(cacheKey, {
+      promise: generationPromise,
+      isBackground: true,
+    });
 
     try {
       await generationPromise;
@@ -164,11 +172,13 @@ export class AiResourcesService {
     }
 
     // 6. Check for in-flight generation to prevent concurrent LLM calls
-    if (this.generationLocks.has(cacheKey)) {
+    const existingLock = this.generationLocks.get(cacheKey);
+    if (existingLock && !existingLock.isBackground) {
+      // Another inline request is already generating — join it
       this.logger.log(
-        `Cache miss but generation in-flight for: track=${trackKey} threshold=${thresholdGroup}. Awaiting existing promise...`,
+        `Cache miss but inline generation in-flight for: track=${trackKey} threshold=${thresholdGroup}. Awaiting existing promise...`,
       );
-      const generatedRecord = await this.generationLocks.get(cacheKey)!;
+      const generatedRecord = await existingLock.promise;
       const clone = { ...generatedRecord };
       clone.resources = this.getRandomSubset(
         clone.resources,
@@ -181,6 +191,45 @@ export class AiResourcesService {
       return clone;
     }
 
+    if (existingLock?.isBackground) {
+      // Background warming is in-flight — race it against the inline timeout
+      // so the user never waits longer than INLINE_TIMEOUT_MS
+      this.logger.log(
+        `Cache miss, background generation in-flight for: track=${trackKey} threshold=${thresholdGroup}. Racing with inline timeout...`,
+      );
+      const inlineDeadline = new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error('inline_timeout')),
+          AI_RESOURCE_CONSTANTS.INLINE_TIMEOUT_MS,
+        ),
+      );
+      try {
+        const generatedRecord = await Promise.race([
+          existingLock.promise,
+          inlineDeadline,
+        ]);
+        const clone = { ...generatedRecord };
+        clone.resources = this.getRandomSubset(
+          clone.resources,
+          AI_RESOURCE_CONSTANTS.RANDOM_RETURN_COUNT,
+        );
+        clone.videos = this.getRandomSubset(
+          clone.videos,
+          AI_RESOURCE_CONSTANTS.RANDOM_RETURN_COUNT,
+        );
+        return clone;
+      } catch (err) {
+        if (err instanceof Error && err.message === 'inline_timeout') {
+          this.logger.warn(
+            `Background generation did not finish within inline timeout for: track=${trackKey} threshold=${thresholdGroup}. Starting own inline generation...`,
+          );
+          // Fall through to start own inline generation below
+        } else {
+          throw err;
+        }
+      }
+    }
+
     // 7. Invoke AI resource generation and lock
     this.logger.log(
       `Cache miss for resources: track=${trackKey} threshold=${thresholdGroup}. Generating via AI...`,
@@ -190,7 +239,10 @@ export class AiResourcesService {
       thresholdGroup,
       AI_RESOURCE_CONSTANTS.INLINE_TIMEOUT_MS,
     );
-    this.generationLocks.set(cacheKey, generationPromise);
+    this.generationLocks.set(cacheKey, {
+      promise: generationPromise,
+      isBackground: false,
+    });
 
     try {
       const savedRecord = await generationPromise;
