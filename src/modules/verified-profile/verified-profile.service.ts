@@ -784,26 +784,22 @@ export class VerifiedProfileService {
     poolProfile?: EmployerPoolProfile | null,
     profileAvailabilityStatus?: string | null,
   ): string[] {
-    const poolAvailability = poolProfile?.availability;
-    const isTimingValue =
-      poolAvailability === 'immediately_available' ||
-      poolAvailability === 'on_notice_under_1_month' ||
-      poolAvailability === 'on_notice_1_3_months' ||
-      poolAvailability === 'employed_flexible';
+    const jobSearchStatus =
+      profileAvailabilityStatus ?? personalAnswers.job_search_status;
 
     return compactStrings([
       seniorityBadge,
       tierLabel,
-      resolveJobSearchStatusLabel(
-        profileAvailabilityStatus ?? personalAnswers.job_search_status,
-      ),
+      resolveJobSearchStatusLabel(jobSearchStatus),
       ...resolveWorkArrangementLabels(
         personalAnswers.work_arrangement_preference,
       ),
       resolveExperienceLabel(personalAnswers.years_experience),
-      resolveAvailabilityLabel(
-        isTimingValue ? poolAvailability : personalAnswers.availability,
-      ),
+      jobSearchStatus !== 'not_looking'
+        ? resolveAvailabilityLabel(
+            poolProfile?.availability ?? personalAnswers.availability,
+          )
+        : undefined,
     ]);
   }
 
