@@ -1317,6 +1317,33 @@ describe('AdvancedAssessmentService', () => {
     });
   });
 
+  // ── question composition constants ──────────────────────────────────────────
+
+  describe('question composition constants', () => {
+    it('MCQ count is 8 (spec requirement)', () => {
+      // Regression guard: the spec mandates 8 MCQ / 2 short-text / 5 long-text.
+      // Previously the constants were 5 / 5, causing wrong composition.
+      const {
+        ADVANCED_ASSESSMENT_MCQ_COUNT,
+      } = require('./advanced-assessment-ai.service');
+      expect(ADVANCED_ASSESSMENT_MCQ_COUNT).toBe(8);
+    });
+
+    it('short-text count is 2 (spec requirement)', () => {
+      const {
+        ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT,
+      } = require('./advanced-assessment-ai.service');
+      expect(ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT).toBe(2);
+    });
+
+    it('base questions total is 14 (8 MCQ + 2 short + 4 long, LT-3 added mid-session)', () => {
+      const {
+        ADVANCED_ASSESSMENT_BASE_QUESTIONS,
+      } = require('./advanced-assessment-ai.service');
+      expect(ADVANCED_ASSESSMENT_BASE_QUESTIONS).toBe(14);
+    });
+  });
+
   // ── start — retake gate ─────────────────────────────────────────────────────
 
   describe('start() retake gate', () => {
