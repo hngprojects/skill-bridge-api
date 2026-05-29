@@ -53,12 +53,12 @@ function makeAttempt(
 }
 
 /**
- * 5 MCQ + 5 short text + 2 LT-1 (SITUATIONAL) + 2 LT-2 (WORK_TASK) + 1
+ * 8 MCQ + 2 short text + 2 LT-1 (SITUATIONAL) + 2 LT-2 (WORK_TASK) + 1
  * LT-3 (REFLECTION, runtime-generated). For tests we pre-populate the
  * reflection slot so submit() doesn't hit the LT2_NOT_SUBMITTED guard.
  */
 function makeSessionJson() {
-  const mcqQuestions = Array.from({ length: 5 }, (_, i) => ({
+  const mcqQuestions = Array.from({ length: 8 }, (_, i) => ({
     question_id: `mcq-${i + 1}`,
     question_number: i + 1,
     block: 'mcq',
@@ -67,12 +67,12 @@ function makeSessionJson() {
     options: ['Option A', 'Option B', 'Option C', 'Option D'],
     slot_type: null,
     metadata: { competency: 'sql_queries' },
-    correct_answer: i < 4 ? 'Option A' : 'Option B',
+    correct_answer: i < 7 ? 'Option A' : 'Option B',
   }));
 
-  const shortTextQuestions = Array.from({ length: 5 }, (_, i) => ({
+  const shortTextQuestions = Array.from({ length: 2 }, (_, i) => ({
     question_id: `short-${i + 1}`,
-    question_number: 6 + i,
+    question_number: 9 + i,
     block: 'short_text',
     question_type: QuestionType.REQUIRED_TEXT,
     question_text: `Short text question ${i + 1}`,
@@ -136,16 +136,16 @@ function makeSubmitJobData(overrides: Record<string, unknown> = {}) {
 }
 
 /**
- * Returns 10 scored text answers in the canonical scoring shape:
- * 5 short (max 12) + 2 LT-1 (max 12) + 2 LT-2 (max 12) + 1 LT-3 (max 8).
+ * Returns 7 scored text answers in the canonical scoring shape:
+ * 2 short (max 12) + 2 LT-1 (max 12) + 2 LT-2 (max 12) + 1 LT-3 (max 8).
  * The caller distributes total raw across all answers proportionally.
  */
-function makeScoredAnswers(rawTotal: number, maxTotal = 116) {
-  // 9 full-rubric questions (max 12 each = 108) + 1 LT-3 (max 8) = 116
+function makeScoredAnswers(rawTotal: number, maxTotal = 80) {
+  // 6 full-rubric questions (max 12 each = 72) + 1 LT-3 (max 8) = 80
   const proportion = rawTotal / maxTotal;
   const result = [];
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 2; i++) {
     const raw = Math.round(12 * proportion);
     result.push({
       question_id: `short-${i + 1}`,
@@ -200,7 +200,7 @@ function makeScoredAnswers(rawTotal: number, maxTotal = 116) {
 }
 
 function makePerfectScoredAnswers() {
-  return makeScoredAnswers(116, 116);
+  return makeScoredAnswers(80, 80);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -374,9 +374,9 @@ describe('AdvancedAssessmentService', () => {
     };
 
     rubricScoring = {
-      // 53/116 ≈ 46% raw text yield → still emerging band by default
-      // max-total 116 = 5 short×12 + 4 long×12 + 1 LT-3×8
-      scoreAnswers: jest.fn().mockResolvedValue(makeScoredAnswers(53, 116)),
+      // 37/80 ≈ 46% raw text yield → still emerging band by default
+      // max-total 80 = 2 short×12 + 4 long×12 + 1 LT-3×8
+      scoreAnswers: jest.fn().mockResolvedValue(makeScoredAnswers(37, 80)),
     };
 
     guidanceReport = {
@@ -620,7 +620,7 @@ describe('AdvancedAssessmentService', () => {
     });
 
     it('routes the REFLECTION slot through is_lt3=true and others through full rubric', async () => {
-      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(53, 116));
+      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(37, 80));
       await service.processSubmitJob(makeSubmitJobData() as never);
 
       const inputs = rubricScoring.scoreAnswers.mock.calls[0][0];
@@ -751,7 +751,7 @@ describe('AdvancedAssessmentService', () => {
     });
 
     it('places tier at Emerging when pct < 75%', async () => {
-      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(76, 116));
+      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(53, 80));
       await service.processSubmitJob(makeSubmitJobData() as never);
 
       const resultSave = entityManagerSaveCalls.find(
@@ -763,7 +763,7 @@ describe('AdvancedAssessmentService', () => {
     });
 
     it('marks sub-50% as failed without profile completion or guidance report', async () => {
-      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(0, 116));
+      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(0, 80));
       await service.processSubmitJob(
         makeSubmitJobData({ answers: [] }) as never,
       );
@@ -812,15 +812,15 @@ describe('AdvancedAssessmentService', () => {
       const longRows = rows.filter(
         (r) => r.question_type === AssessmentScoreQuestionType.LONG_TEXT,
       );
-      expect(mcqRows).toHaveLength(5);
-      expect(shortRows).toHaveLength(5);
+      expect(mcqRows).toHaveLength(8);
+      expect(shortRows).toHaveLength(2);
       expect(longRows).toHaveLength(5);
       // LT-3 row carries max_score=8
       expect(longRows.find((r) => r.max_score === 8)).toBeDefined();
     });
 
     it('sets retake gate (assessment_locked_until) when tier is not job_ready', async () => {
-      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(66, 116));
+      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(55, 80));
 
       await service.processSubmitJob(makeSubmitJobData() as never);
       expect(entityManagerUpdate).toHaveBeenCalledWith(
@@ -941,7 +941,7 @@ describe('AdvancedAssessmentService', () => {
     describe('tier boundary cases', () => {
       it('49% → Not Ready', async () => {
         rubricScoring.scoreAnswers.mockResolvedValue(
-          makeScoredAnswers(56, 116),
+          makeScoredAnswers(38, 80),
         );
         await service.processSubmitJob(
           makeSubmitJobData({ answers: [] }) as never,
