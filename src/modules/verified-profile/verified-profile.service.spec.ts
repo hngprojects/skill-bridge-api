@@ -622,9 +622,7 @@ describe('VerifiedProfileService', () => {
         {
           id: 'key_strengths',
           label: 'Strengths',
-          items: [
-            { competency: 'general', label: 'General', percentage: 76 },
-          ],
+          items: [{ competency: 'general', label: 'General', percentage: 76 }],
         },
       ]);
       expect(result).not.toHaveProperty('detailed_skills');
