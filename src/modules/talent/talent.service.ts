@@ -194,6 +194,13 @@ export class TalentService {
     };
   }
 
+  /**
+   * Uploads a resume and persists the original filename.
+   *
+   * The S3 key is always a UUID to avoid collisions, but `resume_filename`
+   * stores `file.originalname` so the frontend can display the human-readable
+   * name rather than a UUID on every page load / tab switch.
+   */
   async updateResume(userId: string, file: Express.Multer.File) {
     const resumeUrl = await this.uploadService.uploadResume(file);
     const profile = await this.findOrCreateProfile(userId);
