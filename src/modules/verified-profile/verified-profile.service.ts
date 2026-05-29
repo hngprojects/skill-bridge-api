@@ -241,6 +241,7 @@ export class VerifiedProfileService {
       seniorityBadge,
       tierLabel,
       poolProfile,
+      profile.availability_status,
     );
 
     const shareUrl = buildShareUrl(
@@ -781,17 +782,27 @@ export class VerifiedProfileService {
     seniorityBadge: string | undefined,
     tierLabel: string | undefined,
     poolProfile?: EmployerPoolProfile | null,
+    profileAvailabilityStatus?: string | null,
   ): string[] {
+    const poolAvailability = poolProfile?.availability;
+    const isTimingValue =
+      poolAvailability === 'immediately_available' ||
+      poolAvailability === 'on_notice_under_1_month' ||
+      poolAvailability === 'on_notice_1_3_months' ||
+      poolAvailability === 'employed_flexible';
+
     return compactStrings([
       seniorityBadge,
       tierLabel,
-      resolveJobSearchStatusLabel(personalAnswers.job_search_status),
+      resolveJobSearchStatusLabel(
+        profileAvailabilityStatus ?? personalAnswers.job_search_status,
+      ),
       ...resolveWorkArrangementLabels(
         personalAnswers.work_arrangement_preference,
       ),
       resolveExperienceLabel(personalAnswers.years_experience),
       resolveAvailabilityLabel(
-        poolProfile?.availability ?? personalAnswers.availability,
+        isTimingValue ? poolAvailability : personalAnswers.availability,
       ),
     ]);
   }
