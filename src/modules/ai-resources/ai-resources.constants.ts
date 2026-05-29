@@ -6,7 +6,7 @@ export const AI_RESOURCE_CONSTANTS = {
   RANDOM_RETURN_COUNT: 3,
 
   // Timeout for user-facing inline generation fallback (ms)
-  INLINE_TIMEOUT_MS: 60_000,
+  INLINE_TIMEOUT_MS: 120_000,
 
   // Timeout for background cache warming generation (ms)
   BACKGROUND_TIMEOUT_MS: 300_000,

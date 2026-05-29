@@ -79,20 +79,19 @@ export class AiReportService {
         : 0,
     ]);
 
-    return {
-      skill_guidance_report: await this.buildEnvelope(
-        skillResult,
-        skillPercentile,
-        profile,
-        'skill',
-      ),
-      advanced_guidance_report: await this.buildEnvelope(
-        advancedResult,
-        advancedPercentile,
-        profile,
-        'advanced',
-      ),
-    };
+    const [skill_guidance_report, advanced_guidance_report] = await Promise.all(
+      [
+        this.buildEnvelope(skillResult, skillPercentile, null, 'skill'),
+        this.buildEnvelope(
+          advancedResult,
+          advancedPercentile,
+          profile,
+          'advanced',
+        ),
+      ],
+    );
+
+    return { skill_guidance_report, advanced_guidance_report };
   }
 
   private async buildEnvelope(
