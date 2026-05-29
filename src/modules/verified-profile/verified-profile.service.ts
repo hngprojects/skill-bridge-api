@@ -789,7 +789,11 @@ export class VerifiedProfileService {
       ...resolveWorkArrangementLabels(
         personalAnswers.work_arrangement_preference,
       ),
-      resolveExperienceLabel(personalAnswers.years_experience),
+      // Omit the self-reported experience label when a validated level is
+      // present — showing both would contradict (e.g. "Senior Level, 1-3 yrs").
+      seniorityBadge
+        ? undefined
+        : resolveExperienceLabel(personalAnswers.years_experience),
       resolveAvailabilityLabel(
         poolProfile?.availability ?? personalAnswers.availability,
       ),
