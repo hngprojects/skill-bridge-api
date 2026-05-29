@@ -244,7 +244,7 @@ export class TalentService {
         await manager.update(
           EmployerPoolProfile,
           { talent_profile_id: savedProfile.id },
-          { availability: dto.availabilityStatus },
+          { job_search_status: dto.availabilityStatus },
         );
 
         return savedProfile;

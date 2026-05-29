@@ -150,7 +150,7 @@ describe('TalentService settings', () => {
     expect(manager.update).toHaveBeenCalledWith(
       EmployerPoolProfile,
       { talent_profile_id: 'profile-1' },
-      { availability: TalentAvailabilityStatus.ACTIVELY_LOOKING },
+      { job_search_status: TalentAvailabilityStatus.ACTIVELY_LOOKING },
     );
     expect(result).toMatchObject({
       status: 'success',
