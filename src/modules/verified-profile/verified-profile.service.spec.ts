@@ -210,13 +210,14 @@ describe('VerifiedProfileService', () => {
       expect(result).not.toHaveProperty('detailedSkills');
       expect(result).not.toHaveProperty('key_strengths');
       expect(result).not.toHaveProperty('professional_skills');
+      // '3-5 yrs exp.' must not appear alongside 'Mid Level' — validated level
+      // is authoritative and the self-reported experience label is suppressed.
       expect(result.about_tags).toEqual([
         'Mid Level',
         'Job Ready',
         'Open to Work',
         'Fully Remote',
         'Hybrid',
-        '3-5 yrs exp.',
         'Immediately Available',
       ]);
       expect(result).not.toHaveProperty('detailed_skills');
