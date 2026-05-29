@@ -450,7 +450,12 @@ export class AuthService {
     };
 
     const json = JSON.stringify(exportPayload, null, 2);
-    const filename = `skillbridge-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+    const namePart = `${user.first_name ?? ''}-${user.last_name ?? ''}`
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    const filename = `skillbridge-data-export-${namePart}-${new Date().toISOString().slice(0, 10)}.json`;
 
     // Send email with the export as an attachment
     await this.mailService.send({
