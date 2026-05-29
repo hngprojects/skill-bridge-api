@@ -3,6 +3,7 @@ import { AssessmentQuestion, QuestionType } from '../../assessments/entities';
 import { TalentPersonalAssessmentContext } from './personal-assessment.service';
 
 // Final question counts (includes runtime-generated LT-3).
+// Composition per spec: 8 MCQ (30% weight) + 2 short-text + 5 long-text (70% weight combined).
 export const ADVANCED_ASSESSMENT_TOTAL_QUESTIONS = 15;
 export const ADVANCED_ASSESSMENT_MCQ_COUNT = 8;
 export const ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT = 2;
