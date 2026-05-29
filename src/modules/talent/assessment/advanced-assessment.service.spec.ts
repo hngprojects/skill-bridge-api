@@ -1156,6 +1156,32 @@ describe('AdvancedAssessmentService', () => {
   // ── getSession ──────────────────────────────────────────────────────────────
 
   describe('getSession()', () => {
+    it('returns pending_lt3: true when session has 14 questions and is not completed', async () => {
+      // Session starts with 14 questions; LT-3 arrives only after lt2-submit.
+      // The frontend needs pending_lt3 to know to call lt2-submit before Q15.
+      const session = await service.getSession(userId, 'attempt-1');
+
+      expect(session.question_count).toBe(15); // makeSessionJson pre-populates all 15
+      expect(session.pending_lt3).toBe(false); // all 15 present → no longer pending
+    });
+
+    it('returns pending_lt3: true when only 14 base questions are present', async () => {
+      const base14Json = makeSessionJson();
+      // Strip LT-3 (the last question, REFLECTION slot) to simulate session start
+      base14Json.questions = base14Json.questions.filter(
+        (q) => q.slot_type !== 'REFLECTION',
+      );
+      attemptData.current = makeAttempt({
+        generated_questions_json: base14Json as never,
+        completed_at: null,
+      });
+
+      const session = await service.getSession(userId, 'attempt-1');
+
+      expect(session.question_count).toBe(14);
+      expect(session.pending_lt3).toBe(true);
+    });
+
     it('throws 403 with probation metadata when profile lock is active', async () => {
       const lockedFrom = new Date('2026-05-01T00:00:00.000Z');
       const lockedUntil = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
