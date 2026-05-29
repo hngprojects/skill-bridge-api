@@ -196,6 +196,8 @@ export class VerifiedProfileService {
       latestAdvancedResult?.guidance_report,
     );
 
+    const hasValidatedLevel =
+      profile.validated_level != null || poolProfile?.verified_level != null;
     const validatedLevel =
       profile.validated_level ??
       (poolProfile?.verified_level as VerifiedLevel | undefined) ??
@@ -239,6 +241,7 @@ export class VerifiedProfileService {
     const aboutTags = this.buildAboutTags(
       personalAnswers,
       seniorityBadge,
+      hasValidatedLevel,
       tierLabel,
       poolProfile,
     );
@@ -784,6 +787,7 @@ export class VerifiedProfileService {
   private buildAboutTags(
     personalAnswers: Record<string, unknown>,
     seniorityBadge: string | undefined,
+    hasValidatedLevel: boolean,
     tierLabel: string | undefined,
     poolProfile?: EmployerPoolProfile | null,
   ): string[] {
@@ -794,9 +798,11 @@ export class VerifiedProfileService {
       ...resolveWorkArrangementLabels(
         personalAnswers.work_arrangement_preference,
       ),
-      // Omit the self-reported experience label when a validated level is
-      // present — showing both would contradict (e.g. "Senior Level, 1-3 yrs").
-      seniorityBadge
+      // Omit the self-reported experience label when a persisted validated level
+      // exists — showing both would contradict (e.g. "Senior Level, 1-3 yrs").
+      // Gate on hasValidatedLevel, not seniorityBadge, since the latter is always
+      // set (JUNIOR fallback) even when no real validated level is stored.
+      hasValidatedLevel
         ? undefined
         : resolveExperienceLabel(personalAnswers.years_experience),
       resolveAvailabilityLabel(
