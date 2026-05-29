@@ -105,7 +105,7 @@ export class AiReportService {
   ): Promise<GuidanceReportEnvelope> {
     if (!result) return null;
 
-    // Generate guidance report on demand if missing
+    // Generate guidance report on demand if missing (fallback if worker failed)
     if (!result.guidance_report && profile) {
       result = await this.generateAndPersist(
         result,
