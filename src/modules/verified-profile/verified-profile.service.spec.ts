@@ -364,6 +364,49 @@ describe('VerifiedProfileService', () => {
       expect(JSON.stringify(result)).not.toContain(questionId);
     });
 
+    it('omits self-reported experience label when validated_level is present', async () => {
+      // Regression guard: about_tags must not contain both "Senior Level" and
+      // "1-3 yrs exp." — the validated badge supersedes the self-report.
+      const user = makeUser();
+      const profile = makeProfile({
+        status: TalentProfileStatus.JOB_READY,
+        track: 'backend_developer',
+        validated_level: VerifiedLevel.SENIOR,
+        personal_assessment_answers: {
+          years_experience: '1_3_yrs',
+          job_search_status: 'open_to_right_opportunity',
+          work_arrangement_preference: [],
+        },
+        advanced_assessment_completed_at: new Date('2026-05-10T00:00:00.000Z'),
+        personal_assessment_completed_at: new Date('2026-05-08T00:00:00.000Z'),
+      });
+      const pool = Object.assign(new EmployerPoolProfile(), {
+        talent_profile_id: profile.id,
+        candidate_id: user.id,
+        shareable_link_token: 'cd'.repeat(32),
+        verified_at: new Date('2026-05-10T00:00:00.000Z'),
+        verified_level: VerifiedLevel.SENIOR,
+      });
+
+      (usersService.findOne as jest.Mock).mockResolvedValue(user);
+      (talentProfileRepository.findOne as jest.Mock).mockResolvedValue(profile);
+      (employerPoolRepository.findOne as jest.Mock).mockResolvedValue(pool);
+      openRouterService.chat.mockResolvedValue({ summary: 'Summary.' });
+      (resultQueryBuilder.getOne as jest.Mock).mockImplementation(() => {
+        if (lastAssessmentType === AssessmentType.ADVANCED) {
+          return Promise.resolve(
+            makeResult({ tier: AssessmentTier.JOB_READY, percentage: 85 }),
+          );
+        }
+        return Promise.resolve(null);
+      });
+
+      const result = await service.getForTalentUser(user.id);
+
+      expect(result.about_tags).toContain('Senior Level');
+      expect(result.about_tags).not.toContain('1-3 yrs exp.');
+    });
+
     it('rejects non-talent users', async () => {
       (usersService.findOne as jest.Mock).mockResolvedValue(
         makeUser({ role: UserRole.EMPLOYER }),
