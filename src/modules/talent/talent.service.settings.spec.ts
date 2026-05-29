@@ -158,6 +158,67 @@ describe('TalentService settings', () => {
     });
   });
 
+  describe('updateResume()', () => {
+    const mockFile = {
+      originalname: 'my-cv-2026.pdf',
+      mimetype: 'application/pdf',
+      buffer: Buffer.from('pdf'),
+    } as Express.Multer.File;
+
+    it('persists resume_filename alongside resume_url', async () => {
+      const profile = Object.assign(new TalentProfile(), {
+        id: 'profile-1',
+        user_id: userId,
+        resume_url: null,
+        resume_filename: null,
+      });
+      talentProfileRepository.findOne.mockResolvedValue(profile);
+
+      const uploadService = { uploadResume: jest.fn().mockResolvedValue('https://cdn.example.com/resumes/uuid.pdf') };
+      const svc = new TalentService(
+        talentProfileRepository as never,
+        employerPoolProfileRepository as never,
+        notificationPreferenceRepository as never,
+        uploadService as never,
+        usersService as never,
+        {} as never,
+      );
+
+      const result = await svc.updateResume(userId, mockFile);
+
+      expect(result.resume_filename).toBe('my-cv-2026.pdf');
+      expect(result.resume_url).toBe('https://cdn.example.com/resumes/uuid.pdf');
+      expect(profile.resume_filename).toBe('my-cv-2026.pdf');
+    });
+
+    it('returns resume_filename in response so the frontend can display the original name', async () => {
+      const profile = Object.assign(new TalentProfile(), {
+        id: 'profile-1',
+        user_id: userId,
+        resume_url: null,
+        resume_filename: null,
+      });
+      talentProfileRepository.findOne.mockResolvedValue(profile);
+
+      const uploadService = { uploadResume: jest.fn().mockResolvedValue('https://cdn.example.com/resumes/uuid.pdf') };
+      const svc = new TalentService(
+        talentProfileRepository as never,
+        employerPoolProfileRepository as never,
+        notificationPreferenceRepository as never,
+        uploadService as never,
+        usersService as never,
+        {} as never,
+      );
+
+      const result = await svc.updateResume(userId, mockFile);
+
+      expect(result).toMatchObject({
+        status: 'success',
+        resume_filename: 'my-cv-2026.pdf',
+      });
+    });
+  });
+
   it('does not save availability when employer pool update fails', async () => {
     manager.findOne.mockResolvedValue(
       Object.assign(new TalentProfile(), {
