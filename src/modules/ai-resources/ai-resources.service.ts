@@ -37,6 +37,48 @@ export class AiResourcesService {
     private readonly resourceGenerationService: ResourceGenerationService,
   ) {}
 
+  /**
+   * Warm the cache for a given track. Called in the background after
+   * a user selects their track during onboarding — so that when they
+   * navigate to the resources page, data is already cached.
+   */
+  async warmCache(track: string): Promise<void> {
+    const trackKey = track.toLowerCase().trim();
+    // New users have no assessment, so warm the "general" threshold
+    const thresholdGroup = ScoreThresholdGroup.GENERAL;
+    const cacheKey = `${trackKey}-${thresholdGroup}`;
+
+    const existing = await this.aiLearningResourceRepo.findOne({
+      where: { track: trackKey, threshold_group: thresholdGroup },
+    });
+    if (existing) return; // already cached
+
+    if (this.generationLocks.has(cacheKey)) return; // already generating
+
+    this.logger.log(
+      `Cache warming: generating resources for track=${trackKey} threshold=${thresholdGroup}`,
+    );
+
+    const generationPromise = this.generateAndSaveResources(
+      trackKey,
+      thresholdGroup,
+      AI_RESOURCE_CONSTANTS.BACKGROUND_TIMEOUT_MS,
+    );
+    this.generationLocks.set(cacheKey, generationPromise);
+
+    try {
+      await generationPromise;
+      this.logger.log(
+        `Cache warming complete: track=${trackKey} threshold=${thresholdGroup}`,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      this.logger.error(`Cache warming failed: ${message}`);
+    } finally {
+      this.generationLocks.delete(cacheKey);
+    }
+  }
+
   async getResourcesForUser(userId: string): Promise<AiLearningResource> {
     // 1. Fetch talent profile
     const profile = await this.talentProfileRepo.findOne({
@@ -146,6 +188,7 @@ export class AiResourcesService {
     const generationPromise = this.generateAndSaveResources(
       trackKey,
       thresholdGroup,
+      AI_RESOURCE_CONSTANTS.INLINE_TIMEOUT_MS,
     );
     this.generationLocks.set(cacheKey, generationPromise);
 
@@ -169,10 +212,12 @@ export class AiResourcesService {
   private async generateAndSaveResources(
     trackKey: string,
     thresholdGroup: ScoreThresholdGroup,
+    timeoutMs?: number,
   ): Promise<AiLearningResource> {
     const generated = await this.resourceGenerationService.generate(
       trackKey,
       thresholdGroup,
+      timeoutMs,
     );
 
     const newRecord = this.aiLearningResourceRepo.create({

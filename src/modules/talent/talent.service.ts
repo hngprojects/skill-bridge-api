@@ -41,6 +41,7 @@ import {
   ForbiddenError,
   SuccessMessages,
 } from '../../shared';
+import { AiResourcesService } from '../ai-resources/ai-resources.service';
 
 export type TalentOnboardingResult = {
   message: string;
@@ -68,6 +69,7 @@ export class TalentService {
     private readonly authService: AuthService,
     private readonly usersService: UsersService,
     private readonly uploadService: UploadService,
+    private readonly aiResourcesService: AiResourcesService,
   ) {}
 
   /** Find or create a talent profile for the given user (upsert helper). */
@@ -430,6 +432,14 @@ export class TalentService {
     profile.track = dto.track;
     if (profile.onboarding_step < 2) profile.onboarding_step = 2;
     await this.talentProfileRepository.save(profile);
+
+    // Warm resource cache in the background so resources page loads instantly
+    this.aiResourcesService.warmCache(dto.track).catch((err) => {
+      this.logger.error(
+        `Resource cache warming failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      );
+    });
+
     return {
       status: 'success',
       message: SuccessMessages.ONBOARDING.TRACK_SAVED,

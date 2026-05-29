@@ -62,6 +62,7 @@ describe('TalentService settings', () => {
       {} as never,
       usersService as never,
       {} as never,
+      {} as never,
     );
   });
 
