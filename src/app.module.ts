@@ -37,6 +37,7 @@ import { AdminQuestionsModule } from './modules/admin/questions/admin-questions.
 import { EmployerDiscoveryModule } from './modules/employer-discovery/employer-discovery.module';
 import { OffersModule } from './modules/offers/offers.module';
 import { EmployerAssessmentsModule } from './modules/employer-assessments/employer-assessments.module';
+import { QuestionBankGeneratorModule } from './tasks/question-bank-generator.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { EmployerAssessmentsModule } from './modules/employer-assessments/employ
     EmployerDiscoveryModule,
     OffersModule,
     EmployerAssessmentsModule,
+    QuestionBankGeneratorModule,
   ],
   providers: [
     {
