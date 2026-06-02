@@ -135,10 +135,10 @@ function makeSubmitJobData(overrides: Record<string, unknown> = {}) {
 
 /**
  * Returns 7 scored text answers in the canonical scoring shape:
- * 2 short (max 12) + 2 LT-1 (max 12) + 2 LT-2 (max 12) + 1 LT-3 (max 8).
+ * 2 short (max 12) + 5 long (max 12) = 84 total max.
  * The caller distributes total raw across all answers proportionally.
  */
-function makeScoredAnswers(rawTotal: number, maxTotal = 80) {
+function makeScoredAnswers(rawTotal: number, maxTotal = 84) {
   // 6 full-rubric questions (max 12 each = 72) + 1 LT-3 (max 8) = 80
   const proportion = rawTotal / maxTotal;
   const result = [];
@@ -182,7 +182,7 @@ function makeScoredAnswers(rawTotal: number, maxTotal = 80) {
 }
 
 function makePerfectScoredAnswers() {
-  return makeScoredAnswers(80, 80);
+  return makeScoredAnswers(84, 84);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -207,7 +207,6 @@ describe('AdvancedAssessmentService', () => {
   let advancedAssessmentAiService: { generateQuestions: jest.Mock };
   let rubricScoring: { scoreAnswers: jest.Mock };
   let guidanceReport: { generate: jest.Mock };
-  let lt3Generation: { generate: jest.Mock };
   let employerPoolProfileService: { upsert: jest.Mock };
   let questionGeneration: { generateQuestions?: jest.Mock };
   let usersService: { findOne: jest.Mock };
@@ -365,9 +364,9 @@ describe('AdvancedAssessmentService', () => {
     };
 
     rubricScoring = {
-      // 37/80 ≈ 46% raw text yield → still emerging band by default
-      // max-total 80 = 2 short×12 + 4 long×12 + 1 LT-3×8
-      scoreAnswers: jest.fn().mockResolvedValue(makeScoredAnswers(37, 80)),
+      // 37/84 ≈ 44% raw text yield → still emerging band by default
+      // max-total 84 = 2 short×12 + 5 long×12
+      scoreAnswers: jest.fn().mockResolvedValue(makeScoredAnswers(37, 84)),
     };
 
     guidanceReport = {
@@ -410,13 +409,6 @@ describe('AdvancedAssessmentService', () => {
       ),
     };
 
-    lt3Generation = {
-      generate: jest.fn().mockResolvedValue({
-        question_text:
-          'You mentioned aligning stakeholders on tradeoffs. Why did you choose that path, and what would you do differently next time?',
-      }),
-    };
-
     employerPoolProfileService = {
       upsert: jest.fn().mockResolvedValue({}),
     };
@@ -451,7 +443,6 @@ describe('AdvancedAssessmentService', () => {
       advancedAssessmentAiService as never,
       rubricScoring as never,
       guidanceReport as never,
-      lt3Generation as never,
       employerPoolProfileService as never,
       questionGeneration as never,
       usersService as never,
@@ -774,7 +765,7 @@ describe('AdvancedAssessmentService', () => {
     });
 
     it('places tier at Emerging when pct < 75%', async () => {
-      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(53, 80));
+      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(53, 84));
       await service.processSubmitJob(makeSubmitJobData() as never);
 
       const resultSave = entityManagerSaveCalls.find(
@@ -786,7 +777,7 @@ describe('AdvancedAssessmentService', () => {
     });
 
     it('marks sub-50% as failed without profile completion or guidance report', async () => {
-      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(0, 80));
+      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(0, 84));
       await service.processSubmitJob(
         makeSubmitJobData({ answers: [] }) as never,
       );
@@ -841,7 +832,7 @@ describe('AdvancedAssessmentService', () => {
     });
 
     it('sets retake gate (assessment_locked_until) when tier is not job_ready', async () => {
-      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(55, 80));
+      rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(55, 84));
 
       await service.processSubmitJob(makeSubmitJobData() as never);
       expect(entityManagerUpdate).toHaveBeenCalledWith(
@@ -961,7 +952,7 @@ describe('AdvancedAssessmentService', () => {
 
     describe('tier boundary cases', () => {
       it('49% → Not Ready', async () => {
-        rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(38, 80));
+        rubricScoring.scoreAnswers.mockResolvedValue(makeScoredAnswers(40, 84));
         await service.processSubmitJob(
           makeSubmitJobData({ answers: [] }) as never,
         );
