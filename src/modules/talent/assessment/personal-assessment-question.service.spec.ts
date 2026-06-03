@@ -190,3 +190,185 @@ describe('PersonalAssessmentQuestionService', () => {
     expect(narrative?.maxLength).toBe(1000);
   });
 });
+
+describe('PersonalAssessmentQuestionService.importQuestions', () => {
+  const sampleQuestion = {
+    id: 'PA-GEN-WST-001',
+    section: 'work_style',
+    track: 'all',
+    question: 'How has most of your professional work been physically structured?',
+    fieldName: 'work_arrangement',
+    format: 'single_select' as const,
+    required: true,
+    options: [
+      { value: 'fully_remote', label: 'Fully remote, no office' },
+      { value: 'hybrid', label: 'Hybrid' },
+    ],
+  };
+
+  it('inserts new questions and reloads the catalog', async () => {
+    const savedRows: Array<Record<string, unknown>> = [];
+    const questionRepo = {
+      find: jest.fn().mockImplementation(async () =>
+        savedRows.filter((row) => row.is_live !== false),
+      ),
+      create: jest.fn().mockImplementation((data: Record<string, unknown>) => ({
+        ...data,
+      })),
+      save: jest
+        .fn()
+        .mockImplementation(async (rows: Array<Record<string, unknown>>) => {
+          for (const row of rows) {
+            const index = savedRows.findIndex((saved) => saved.id === row.id);
+            if (index >= 0) {
+              savedRows[index] = row;
+            } else {
+              savedRows.push(row);
+            }
+          }
+          return rows;
+        }),
+    };
+
+    const importService = new PersonalAssessmentQuestionService(
+      questionRepo as never,
+    );
+    importService.loadFromTestQuestions();
+
+    const result = await importService.importQuestions([sampleQuestion]);
+
+    expect(result).toEqual({
+      inserted: 1,
+      updated: 0,
+      skipped: 0,
+      errors: [],
+    });
+    expect(questionRepo.save).toHaveBeenCalled();
+    expect(importService.findQuestionSection('work_arrangement')).toBe(5);
+  });
+
+  it('updates an existing question by id', async () => {
+    const savedRows = [
+      {
+        id: sampleQuestion.id,
+        section: 'work_style',
+        track: 'all',
+        question: 'Old prompt',
+        field_name: 'work_arrangement',
+        format: 'single_select',
+        required: true,
+        options: [{ value: 'remote', label: 'Remote' }],
+        display_order: 3,
+        is_live: true,
+      },
+    ];
+    const questionRepo = {
+      find: jest.fn().mockImplementation(async () => savedRows),
+      create: jest.fn().mockImplementation((data: Record<string, unknown>) => ({
+        ...data,
+      })),
+      save: jest
+        .fn()
+        .mockImplementation(async (rows: Array<Record<string, unknown>>) => {
+          for (const row of rows) {
+            const index = savedRows.findIndex((saved) => saved.id === row.id);
+            savedRows[index] = row as (typeof savedRows)[number];
+          }
+          return rows;
+        }),
+    };
+
+    const importService = new PersonalAssessmentQuestionService(
+      questionRepo as never,
+    );
+    await importService.reloadFromDatabase();
+
+    const result = await importService.importQuestions([sampleQuestion]);
+
+    expect(result.inserted).toBe(0);
+    expect(result.updated).toBe(1);
+    expect(savedRows[0].question).toBe(sampleQuestion.question);
+    expect(savedRows[0].display_order).toBe(3);
+  });
+
+  it('updates an existing question by field_name and track when id is new', async () => {
+    const savedRows = [
+      {
+        id: 'PA-EXISTING-001',
+        section: 'work_style',
+        track: 'all',
+        question: 'Old prompt',
+        field_name: 'work_arrangement',
+        format: 'single_select',
+        required: true,
+        options: [{ value: 'remote', label: 'Remote' }],
+        display_order: 2,
+        is_live: true,
+      },
+    ];
+    const questionRepo = {
+      find: jest.fn().mockImplementation(async (options?: { where?: unknown }) => {
+        if (Array.isArray(options?.where)) {
+          return savedRows.filter((row) => row.id === sampleQuestion.id);
+        }
+        if (
+          options &&
+          typeof options.where === 'object' &&
+          options.where &&
+          'field_name' in options.where
+        ) {
+          return savedRows;
+        }
+        return savedRows;
+      }),
+      create: jest.fn().mockImplementation((data: Record<string, unknown>) => ({
+        ...data,
+      })),
+      save: jest
+        .fn()
+        .mockImplementation(async (rows: Array<Record<string, unknown>>) => {
+          for (const row of rows) {
+            const index = savedRows.findIndex((saved) => saved.id === row.id);
+            savedRows[index] = row as (typeof savedRows)[number];
+          }
+          return rows;
+        }),
+    };
+
+    const importService = new PersonalAssessmentQuestionService(
+      questionRepo as never,
+    );
+    await importService.reloadFromDatabase();
+
+    const result = await importService.importQuestions([sampleQuestion]);
+
+    expect(result.updated).toBe(1);
+    expect(savedRows).toHaveLength(1);
+    expect(savedRows[0].id).toBe('PA-EXISTING-001');
+    expect(savedRows[0].question).toBe(sampleQuestion.question);
+  });
+
+  it('skips invalid rows and records errors', async () => {
+    const questionRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      create: jest.fn(),
+      save: jest.fn(),
+    };
+
+    const importService = new PersonalAssessmentQuestionService(
+      questionRepo as never,
+    );
+    importService.loadFromTestQuestions();
+
+    const result = await importService.importQuestions([
+      {
+        ...sampleQuestion,
+        section: 'unknown_section',
+      },
+    ]);
+
+    expect(result.skipped).toBe(1);
+    expect(result.errors[0]).toContain('unknown section');
+    expect(questionRepo.save).not.toHaveBeenCalled();
+  });
+});
