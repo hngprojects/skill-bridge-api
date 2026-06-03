@@ -861,7 +861,7 @@ describe('AdvancedAssessmentService', () => {
       expect(diffDays).toBe(14);
     });
 
-    it('clears retake lock dates when tier is job_ready', async () => {
+    it('sets retake gate (assessment_locked_until) when tier is job_ready', async () => {
       rubricScoring.scoreAnswers.mockResolvedValue(makePerfectScoredAnswers());
 
       await service.processSubmitJob(makeSubmitJobData() as never);
@@ -870,9 +870,9 @@ describe('AdvancedAssessmentService', () => {
         TalentProfile,
         { id: profileStore.id },
         expect.objectContaining({
-          assessment_locked_from: null,
-          assessment_locked_until: null,
-          advanced_retake_required: false,
+          assessment_locked_from: expect.any(Date),
+          assessment_locked_until: expect.any(Date),
+          advanced_retake_required: true,
         }),
       );
     });
