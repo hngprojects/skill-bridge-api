@@ -459,6 +459,19 @@ export class AdvancedAssessmentService {
         new Date().toISOString(),
       );
       await manager.save(AssessmentAttempt, lockedAttempt);
+
+      const lockedFrom = new Date();
+      const unlocksAt = new Date(lockedFrom);
+      unlocksAt.setDate(unlocksAt.getDate() + RETAKE_GATE_DAYS);
+      await manager.update(
+        TalentProfile,
+        { id: profile.id },
+        {
+          assessment_locked_from: lockedFrom,
+          assessment_locked_until: unlocksAt,
+          advanced_retake_required: true,
+        },
+      );
     });
 
     try {
@@ -473,6 +486,14 @@ export class AdvancedAssessmentService {
       });
     } catch {
       await this.clearSubmitEnqueuedAt(dto.sessionId);
+      await this.talentProfileRepo.update(
+        { id: profile.id },
+        {
+          assessment_locked_from: null,
+          assessment_locked_until: null,
+          advanced_retake_required: false,
+        },
+      );
       throw new ServiceUnavailableException({
         error: 'SUBMIT_QUEUE_UNAVAILABLE',
         message: ErrorMessages.ADVANCED_ASSESSMENT.SUBMIT_QUEUE_UNAVAILABLE,
