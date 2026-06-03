@@ -391,11 +391,15 @@ export class PersonalAssessmentQuestionService
     }
 
     const toSave = [...pendingById.values()];
-    for (let i = 0; i < toSave.length; i += IMPORT_SAVE_CHUNK_SIZE) {
-      await this.questionRepo.save(toSave.slice(i, i + IMPORT_SAVE_CHUNK_SIZE));
-    }
-
     if (toSave.length > 0) {
+      await this.questionRepo.manager.transaction(async (manager) => {
+        for (let i = 0; i < toSave.length; i += IMPORT_SAVE_CHUNK_SIZE) {
+          await manager.save(
+            PersonalAssessmentQuestionEntity,
+            toSave.slice(i, i + IMPORT_SAVE_CHUNK_SIZE),
+          );
+        }
+      });
       await this.reloadFromDatabase();
     }
 

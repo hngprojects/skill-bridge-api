@@ -250,6 +250,29 @@ describe('PersonalAssessmentQuestionService', () => {
 });
 
 describe('PersonalAssessmentQuestionService.importQuestions', () => {
+  function withTransactionalSave<T extends { save: jest.Mock }>(
+    questionRepo: T,
+  ): T & {
+    manager: {
+      transaction: jest.Mock;
+    };
+  } {
+    return {
+      ...questionRepo,
+      manager: {
+        transaction: jest.fn(
+          async (work: (manager: { save: jest.Mock }) => Promise<unknown>) =>
+            work({
+              save: jest.fn(
+                async (_entity: unknown, rows: Array<Record<string, unknown>>) =>
+                  questionRepo.save(rows),
+              ),
+            }),
+        ),
+      },
+    };
+  }
+
   const sampleQuestion = {
     id: 'PA-GEN-WST-001',
     section: 'work_style',
@@ -288,9 +311,8 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
         }),
     };
 
-    const importService = new PersonalAssessmentQuestionService(
-      questionRepo as never,
-    );
+    const repo = withTransactionalSave(questionRepo);
+    const importService = new PersonalAssessmentQuestionService(repo as never);
     importService.loadFromTestQuestions();
 
     const result = await importService.importQuestions([sampleQuestion]);
@@ -301,6 +323,7 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
       skipped: 0,
       errors: [],
     });
+    expect(repo.manager.transaction).toHaveBeenCalled();
     expect(questionRepo.save).toHaveBeenCalled();
     expect(importService.findQuestionSection('work_arrangement')).toBe(5);
   });
@@ -337,7 +360,7 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
     };
 
     const importService = new PersonalAssessmentQuestionService(
-      questionRepo as never,
+      withTransactionalSave(questionRepo) as never,
     );
     await importService.reloadFromDatabase();
 
@@ -394,7 +417,7 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
     };
 
     const importService = new PersonalAssessmentQuestionService(
-      questionRepo as never,
+      withTransactionalSave(questionRepo) as never,
     );
     await importService.reloadFromDatabase();
 
@@ -411,6 +434,7 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
       find: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       save: jest.fn(),
+      manager: { transaction: jest.fn() },
     };
 
     const importService = new PersonalAssessmentQuestionService(
@@ -428,5 +452,6 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
     expect(result.skipped).toBe(1);
     expect(result.errors[0]).toContain('unknown section');
     expect(questionRepo.save).not.toHaveBeenCalled();
+    expect(questionRepo.manager.transaction).not.toHaveBeenCalled();
   });
 });
