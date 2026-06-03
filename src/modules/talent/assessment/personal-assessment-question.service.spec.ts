@@ -91,6 +91,64 @@ describe('PersonalAssessmentQuestionService', () => {
     expect(trackService.getAllQuestions('backend_developer')).toHaveLength(1);
   });
 
+  it('returns merged section questions sorted by display_order', async () => {
+    const questionRepo = {
+      find: jest.fn().mockResolvedValue([
+        {
+          id: 'PA-GEN-ALL-002',
+          section: 'work_style',
+          track: 'all',
+          question: 'Second global',
+          field_name: 'work_arrangement',
+          format: 'single_select',
+          required: true,
+          options: [{ value: 'remote', label: 'Remote' }],
+          display_order: 2,
+          is_live: true,
+        },
+        {
+          id: 'PA-GEN-ALL-001',
+          section: 'work_style',
+          track: 'all',
+          question: 'First global',
+          field_name: 'deadline_handling',
+          format: 'single_select',
+          required: true,
+          options: [{ value: 'flexible', label: 'Flexible' }],
+          display_order: 1,
+          is_live: true,
+        },
+        {
+          id: 'PA-FED-001',
+          section: 'work_style',
+          track: 'frontend_developer',
+          question: 'Track specific',
+          field_name: 'ideal_work_environment',
+          format: 'text_required',
+          required: true,
+          options: null,
+          display_order: 3,
+          is_live: true,
+        },
+      ]),
+    };
+
+    const trackService = new PersonalAssessmentQuestionService(
+      questionRepo as never,
+    );
+    await trackService.reloadFromDatabase();
+
+    expect(
+      trackService
+        .getSectionQuestions(5, 'frontend_developer')
+        .map((question) => question.key),
+    ).toEqual([
+      'deadline_handling',
+      'work_arrangement',
+      'ideal_work_environment',
+    ]);
+  });
+
   it('skips rows with unsupported formats during reload', async () => {
     const questionRepo = {
       find: jest.fn().mockResolvedValue([

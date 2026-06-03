@@ -74,6 +74,19 @@ function resolveTracksForLookup(track?: string | null): string[] {
   return [PERSONAL_ASSESSMENT_GLOBAL_TRACK, normalized];
 }
 
+function sortQuestionsByDisplayOrder(
+  questions: PersonalAssessmentQuestion[],
+): PersonalAssessmentQuestion[] {
+  return [...questions].sort((left, right) => {
+    const leftSection = resolveSectionNumber(left.sectionSlug ?? '');
+    const rightSection = resolveSectionNumber(right.sectionSlug ?? '');
+    if (leftSection !== rightSection) {
+      return leftSection - rightSection;
+    }
+    return left.questionNumber - right.questionNumber;
+  });
+}
+
 function toPersonalAssessmentQuestion(
   row: PersonalAssessmentQuestionEntity,
 ): PersonalAssessmentQuestion | null {
@@ -241,7 +254,7 @@ export class PersonalAssessmentQuestionService
         merged.set(question.key, question);
       }
     }
-    return [...merged.values()];
+    return sortQuestionsByDisplayOrder([...merged.values()]);
   }
 
   getAllQuestions(track?: string | null): PersonalAssessmentQuestion[] {
@@ -252,7 +265,7 @@ export class PersonalAssessmentQuestionService
         merged.set(question.key, question);
       }
     }
-    return [...merged.values()];
+    return sortQuestionsByDisplayOrder([...merged.values()]);
   }
 
   getOnboardingBackedQuestionKeys(track?: string | null): readonly string[] {
