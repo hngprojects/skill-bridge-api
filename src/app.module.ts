@@ -38,6 +38,8 @@ import { EmployerDiscoveryModule } from './modules/employer-discovery/employer-d
 import { OffersModule } from './modules/offers/offers.module';
 import { EmployerAssessmentsModule } from './modules/employer-assessments/employer-assessments.module';
 import { QuestionBankGeneratorModule } from './tasks/question-bank-generator.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
+import { MetricsInterceptor } from './modules/metrics/metrics.interceptor';
 
 @Module({
   imports: [
@@ -68,6 +70,7 @@ import { QuestionBankGeneratorModule } from './tasks/question-bank-generator.mod
     OffersModule,
     EmployerAssessmentsModule,
     QuestionBankGeneratorModule,
+    MetricsModule,
   ],
   providers: [
     {
@@ -84,6 +87,7 @@ import { QuestionBankGeneratorModule } from './tasks/question-bank-generator.mod
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
   ],
   controllers: [ProbeController, WelcomeController],
 })
