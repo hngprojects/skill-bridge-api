@@ -760,23 +760,17 @@ export class AdvancedAssessmentService {
         : { attempt_id: attempt.id };
 
       if (!failed) {
+        const lockedFrom = new Date();
+        const unlocksAt = new Date(lockedFrom);
+        unlocksAt.setDate(unlocksAt.getDate() + RETAKE_GATE_DAYS);
+
         const profilePatch: Partial<TalentProfile> = {
           advanced_assessment_completed_at: new Date(),
           status: this.tierToProfileStatus(tier),
+          assessment_locked_from: lockedFrom,
+          assessment_locked_until: unlocksAt,
+          advanced_retake_required: true,
         };
-
-        if (tier !== AssessmentTier.JOB_READY) {
-          const lockedFrom = new Date();
-          const unlocksAt = new Date(lockedFrom);
-          unlocksAt.setDate(unlocksAt.getDate() + RETAKE_GATE_DAYS);
-          profilePatch.assessment_locked_from = lockedFrom;
-          profilePatch.assessment_locked_until = unlocksAt;
-          profilePatch.advanced_retake_required = true;
-        } else {
-          profilePatch.assessment_locked_from = null;
-          profilePatch.assessment_locked_until = null;
-          profilePatch.advanced_retake_required = false;
-        }
 
         await manager.update(TalentProfile, { id: profile.id }, profilePatch);
       }
