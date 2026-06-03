@@ -41,7 +41,7 @@ function makeAttempt(
     assessment_type: AssessmentType.ADVANCED,
     started_at: new Date(),
     completed_at: null,
-    expires_at: new Date(Date.now() + 90 * 60 * 1000),
+    expires_at: new Date(Date.now() + 25 * 60 * 1000),
     tab_switch_count: 0,
     copy_paste_count: 0,
     force_submitted: false,
