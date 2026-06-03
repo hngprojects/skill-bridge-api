@@ -5,12 +5,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { PersonalAssessmentQuestionEntity } from '../entities/personal-assessment-question.entity';
-import type {
-  PersonalAssessmentQuestionImportItem,
-  PersonalAssessmentQuestionImportResult,
-} from './personal-assessment-question-import.types';
 import {
   PERSONAL_ASSESSMENT_SECTION_COUNT,
   PERSONAL_ASSESSMENT_SECTION_SLUG_TO_NUMBER,
@@ -18,13 +14,6 @@ import {
   type PersonalAssessmentQuestion,
 } from './personal-assessment.schema';
 import { PERSONAL_ASSESSMENT_TEST_QUESTIONS } from './personal-assessment.test-questions';
-
-const IMPORT_SAVE_CHUNK_SIZE = 500;
-
-export type {
-  PersonalAssessmentQuestionImportItem,
-  PersonalAssessmentQuestionImportResult,
-} from './personal-assessment-question-import.types';
 
 export const PERSONAL_ASSESSMENT_GLOBAL_TRACK = 'all';
 
@@ -72,19 +61,6 @@ function resolveTracksForLookup(track?: string | null): string[] {
     return [PERSONAL_ASSESSMENT_GLOBAL_TRACK];
   }
   return [PERSONAL_ASSESSMENT_GLOBAL_TRACK, normalized];
-}
-
-function sortQuestionsByDisplayOrder(
-  questions: PersonalAssessmentQuestion[],
-): PersonalAssessmentQuestion[] {
-  return [...questions].sort((left, right) => {
-    const leftSection = resolveSectionNumber(left.sectionSlug ?? '');
-    const rightSection = resolveSectionNumber(right.sectionSlug ?? '');
-    if (leftSection !== rightSection) {
-      return leftSection - rightSection;
-    }
-    return left.questionNumber - right.questionNumber;
-  });
 }
 
 function toPersonalAssessmentQuestion(
@@ -254,7 +230,7 @@ export class PersonalAssessmentQuestionService
         merged.set(question.key, question);
       }
     }
-    return sortQuestionsByDisplayOrder([...merged.values()]);
+    return [...merged.values()];
   }
 
   getAllQuestions(track?: string | null): PersonalAssessmentQuestion[] {
@@ -265,7 +241,7 @@ export class PersonalAssessmentQuestionService
         merged.set(question.key, question);
       }
     }
-    return sortQuestionsByDisplayOrder([...merged.values()]);
+    return [...merged.values()];
   }
 
   getOnboardingBackedQuestionKeys(track?: string | null): readonly string[] {
@@ -293,166 +269,6 @@ export class PersonalAssessmentQuestionService
   getSectionCount(): number {
     return PERSONAL_ASSESSMENT_SECTION_COUNT;
   }
-
-  async importQuestions(
-    items: PersonalAssessmentQuestionImportItem[],
-  ): Promise<PersonalAssessmentQuestionImportResult> {
-    const result: PersonalAssessmentQuestionImportResult = {
-      inserted: 0,
-      updated: 0,
-      skipped: 0,
-      errors: [],
-    };
-
-    if (items.length === 0) {
-      return result;
-    }
-
-    const ids = items.map((item) => item.id);
-    const existingRows = await this.questionRepo.find({
-      where: [{ id: In(ids) }],
-    });
-    const existingById = new Map<string, PersonalAssessmentQuestionEntity>(
-      existingRows.map((row) => [row.id, row]),
-    );
-    const existingByFieldTrack = new Map<
-      string,
-      PersonalAssessmentQuestionEntity
-    >(
-      existingRows.map((row) => [
-        `${row.field_name}|${normalizeTrack(row.track)}`,
-        row,
-      ]),
-    );
-
-    const fieldTrackKeys = new Set(
-      items.map((item) => `${item.fieldName}|${normalizeTrack(item.track)}`),
-    );
-    const missingFieldTrackKeys = [...fieldTrackKeys].filter(
-      (key) => !existingByFieldTrack.has(key),
-    );
-    if (missingFieldTrackKeys.length > 0) {
-      const fieldNames = [
-        ...new Set(missingFieldTrackKeys.map((key) => key.split('|')[0])),
-      ];
-      const extraRows = await this.questionRepo.find({
-        where: { field_name: In(fieldNames) },
-      });
-      for (const row of extraRows) {
-        const key = `${row.field_name}|${normalizeTrack(row.track)}`;
-        if (!existingByFieldTrack.has(key)) {
-          existingByFieldTrack.set(key, row);
-          existingById.set(row.id, row);
-        }
-      }
-    }
-
-    const pendingById = new Map<string, PersonalAssessmentQuestionEntity>();
-
-    for (const [index, item] of items.entries()) {
-      const validationError = validateImportItem(item);
-      if (validationError) {
-        result.skipped += 1;
-        result.errors.push(`${item.id}: ${validationError}`);
-        continue;
-      }
-
-      const track = normalizeTrack(item.track);
-      const fieldTrackKey = `${item.fieldName}|${track}`;
-      const byId = existingById.get(item.id);
-      const byFieldTrack = existingByFieldTrack.get(fieldTrackKey);
-
-      if (byId && byFieldTrack && byId.id !== byFieldTrack.id) {
-        result.skipped += 1;
-        result.errors.push(
-          `${item.id}: id and field_name/track refer to different existing rows`,
-        );
-        continue;
-      }
-
-      const existing = byId ?? byFieldTrack;
-      if (existing) {
-        Object.assign(
-          existing,
-          mapImportItemToEntity(item, track, existing.display_order),
-        );
-        result.updated += 1;
-        existingById.set(existing.id, existing);
-        existingByFieldTrack.set(fieldTrackKey, existing);
-        pendingById.set(existing.id, existing);
-        continue;
-      }
-
-      const entity = this.questionRepo.create({
-        id: item.id,
-        ...mapImportItemToEntity(item, track, index + 1),
-      });
-      result.inserted += 1;
-      existingById.set(entity.id, entity);
-      existingByFieldTrack.set(fieldTrackKey, entity);
-      pendingById.set(entity.id, entity);
-    }
-
-    const toSave = [...pendingById.values()];
-    if (toSave.length > 0) {
-      await this.questionRepo.manager.transaction(async (manager) => {
-        for (let i = 0; i < toSave.length; i += IMPORT_SAVE_CHUNK_SIZE) {
-          await manager.save(
-            PersonalAssessmentQuestionEntity,
-            toSave.slice(i, i + IMPORT_SAVE_CHUNK_SIZE),
-          );
-        }
-      });
-      await this.reloadFromDatabase();
-    }
-
-    return result;
-  }
-}
-
-function validateImportItem(
-  item: PersonalAssessmentQuestionImportItem,
-): string | null {
-  if (!resolveSectionNumber(item.section)) {
-    return `unknown section "${item.section}"`;
-  }
-
-  if (!mapFormatToInputType(item.format)) {
-    return `unsupported format "${item.format}"`;
-  }
-
-  const needsOptions =
-    item.format === 'single_select' || item.format === 'multi_select';
-  if (needsOptions && (!item.options || item.options.length === 0)) {
-    return 'options are required for select formats';
-  }
-
-  if (!needsOptions && item.options?.length) {
-    return 'options are not allowed for text formats';
-  }
-
-  return null;
-}
-
-function mapImportItemToEntity(
-  item: PersonalAssessmentQuestionImportItem,
-  track: string,
-  displayOrder: number,
-): Partial<PersonalAssessmentQuestionEntity> {
-  const needsOptions =
-    item.format === 'single_select' || item.format === 'multi_select';
-
-  return {
-    section: item.section,
-    track,
-    question: item.question,
-    field_name: item.fieldName,
-    format: item.format,
-    required: item.required,
-    options: needsOptions ? (item.options ?? null) : null,
-    display_order: displayOrder,
-    is_live: true,
-  };
 }
 
 export function createTestPersonalAssessmentQuestionService(): PersonalAssessmentQuestionService {
