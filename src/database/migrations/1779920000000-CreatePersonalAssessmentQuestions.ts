@@ -24,7 +24,24 @@ export class CreatePersonalAssessmentQuestions1779920000000 implements Migration
         "created_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         "updated_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
         CONSTRAINT "PK_personal_assessment_questions" PRIMARY KEY ("id"),
-        CONSTRAINT "UQ_personal_assessment_questions_field_name_track" UNIQUE ("field_name", "track")
+        CONSTRAINT "UQ_personal_assessment_questions_field_name_track" UNIQUE ("field_name", "track"),
+        CONSTRAINT "CHK_personal_assessment_questions_section" CHECK (
+          "section" IN (
+            'professional_background',
+            'skills_and_expertise',
+            'leadership_and_responsibility',
+            'international_and_remote_experience',
+            'work_style'
+          )
+        ),
+        CONSTRAINT "CHK_personal_assessment_questions_format" CHECK (
+          "format" IN (
+            'single_select',
+            'multi_select',
+            'text_required',
+            'text_optional'
+          )
+        )
       )
     `);
 
@@ -40,6 +57,14 @@ export class CreatePersonalAssessmentQuestions1779920000000 implements Migration
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
+      ALTER TABLE "personal_assessment_questions"
+      DROP CONSTRAINT IF EXISTS "CHK_personal_assessment_questions_format"
+    `);
+    await queryRunner.query(`
+      ALTER TABLE "personal_assessment_questions"
+      DROP CONSTRAINT IF EXISTS "CHK_personal_assessment_questions_section"
+    `);
     await queryRunner.query(
       `DROP TABLE IF EXISTS "personal_assessment_questions"`,
     );
