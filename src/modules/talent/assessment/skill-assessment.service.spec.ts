@@ -1,0 +1,902 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import {
+  AssessmentAttempt,
+  AssessmentQuestion,
+  AssessmentResponse,
+  AssessmentResult,
+  AssessmentType,
+  QuestionType,
+  TalentQuestionHistory,
+  VerifiedLevel,
+} from '../../assessments/entities';
+import { TalentProfile } from '../entities/talent-profile.entity';
+import { ErrorMessages } from '../../../shared';
+import {
+  SKILL_ASSESSMENT_MAX_ATTEMPTS,
+  SKILL_ASSESSMENT_SESSION_TIMEOUT_MS,
+} from '../talent.constants';
+import { SkillAssessmentService } from './skill-assessment.service';
+import { makeTalentProfile } from './personal-assessment.test-fixtures';
+import { IntegrityEventType } from './dto/integrity-event.dto';
+
+describe('SkillAssessmentService', () => {
+  let service: SkillAssessmentService;
+
+  let talentProfileRepo: {
+    findOne: jest.Mock;
+    manager: { transaction: jest.Mock };
+  };
+  let attemptRepo: {
+    count: jest.Mock;
+    findOne: jest.Mock;
+    create: jest.Mock;
+    save: jest.Mock;
+    update: jest.Mock;
+  };
+  let questionRepo: Record<string, jest.Mock>;
+
+  let bankExhaustedAlert: { notify: jest.Mock };
+  let eligibleSkillQuestions: AssessmentQuestion[];
+
+  const userId = 'talent-user-1';
+  let profile = makeTalentProfile({
+    personal_assessment_completed_at: new Date(),
+    claimed_level: 'mid' as never,
+    track: 'frontend_developer',
+    advanced_assessment_completed_at: null,
+  });
+
+  function mockTransaction(probeQuestions: AssessmentQuestion[] = []) {
+    let eligibleQueryCount = 0;
+    talentProfileRepo.manager.transaction.mockImplementation(
+      async (work: (manager: EntityManagerLike) => Promise<unknown>) => {
+        const manager: EntityManagerLike = {
+          findOne: jest.fn().mockResolvedValue(profile),
+          getRepository: jest.fn(() => attemptRepo),
+          createQueryBuilder: jest.fn(() => ({
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockImplementation(() => {
+              eligibleQueryCount += 1;
+              if (eligibleQueryCount === 1) {
+                return eligibleSkillQuestions;
+              }
+              return probeQuestions;
+            }),
+          })),
+          create: jest.fn(
+            (
+              _entity: typeof AssessmentAttempt | typeof AssessmentResult,
+              data: Partial<AssessmentAttempt | AssessmentResult>,
+            ) => attemptRepo.create(data),
+          ),
+          save: jest.fn(
+            (
+              _entity:
+                | typeof AssessmentAttempt
+                | typeof AssessmentResponse
+                | typeof TalentQuestionHistory
+                | typeof AssessmentResult,
+              data: AssessmentAttempt | unknown[],
+            ) => attemptRepo.save(data),
+          ),
+          update: jest.fn(),
+        };
+        return work(manager);
+      },
+    );
+  }
+
+  beforeEach(() => {
+    profile = makeTalentProfile({
+      personal_assessment_completed_at: new Date(),
+      claimed_level: 'mid' as never,
+      track: 'frontend_developer',
+      advanced_assessment_completed_at: null,
+    });
+
+    attemptRepo = {
+      count: jest.fn().mockResolvedValue(0),
+      findOne: jest.fn().mockResolvedValue(null),
+      create: jest.fn((data) => Object.assign(new AssessmentAttempt(), data)),
+      save: jest.fn(async (data) =>
+        Object.assign(new AssessmentAttempt(), data, { id: 'attempt-1' }),
+      ),
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+
+    questionRepo = {
+      create: jest.fn((data) => data),
+      save: jest.fn(async (data) => data),
+      findBy: jest.fn().mockResolvedValue([]),
+      createQueryBuilder: jest.fn(() => ({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue({ max: '0' }),
+      })),
+    };
+    eligibleSkillQuestions = makeSkillBankQuestions();
+
+    talentProfileRepo = {
+      findOne: jest.fn().mockResolvedValue(profile),
+      manager: { transaction: jest.fn() },
+    };
+
+    mockTransaction(makeProbeQuestions());
+
+    bankExhaustedAlert = { notify: jest.fn() };
+
+    service = new SkillAssessmentService(
+      talentProfileRepo as never,
+      questionRepo as never,
+      attemptRepo as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      { generate: jest.fn() } as never,
+      { generateQuestions: jest.fn().mockResolvedValue([]) } as never,
+      bankExhaustedAlert as never,
+    );
+  });
+
+  it(`blocks start when ${SKILL_ASSESSMENT_MAX_ATTEMPTS} skill attempts are already completed`, async () => {
+    attemptRepo.count.mockResolvedValue(SKILL_ASSESSMENT_MAX_ATTEMPTS);
+
+    await expect(service.start(userId)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    await expect(service.start(userId)).rejects.toMatchObject({
+      message: ErrorMessages.SKILL_ASSESSMENT.MAX_ATTEMPTS_REACHED,
+    });
+    expect(attemptRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('blocks start when an active skill session already exists under lock', async () => {
+    attemptRepo.count.mockResolvedValue(2);
+    attemptRepo.findOne.mockResolvedValue(
+      Object.assign(new AssessmentAttempt(), { id: 'active-attempt' }),
+    );
+
+    await expect(service.start(userId)).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(service.start(userId)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        existing_session_id: 'active-attempt',
+      }),
+    });
+    expect(attemptRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('auto-abandons a stale session and allows a new start', async () => {
+    const staleStartedAt = new Date(
+      Date.now() - SKILL_ASSESSMENT_SESSION_TIMEOUT_MS - 1000,
+    );
+    attemptRepo.count.mockResolvedValue(0);
+    attemptRepo.findOne.mockResolvedValue(
+      Object.assign(new AssessmentAttempt(), {
+        id: 'stale-attempt',
+        started_at: staleStartedAt,
+      }),
+    );
+
+    const result = await service.start(userId);
+
+    expect(attemptRepo.update).toHaveBeenCalledWith('stale-attempt', {
+      completed_at: expect.any(Date),
+      force_submitted: true,
+    });
+    expect(result.session_id).toBe('attempt-1');
+  });
+
+  it('blocks start when stale session pushes completed count to max', async () => {
+    const staleStartedAt = new Date(
+      Date.now() - SKILL_ASSESSMENT_SESSION_TIMEOUT_MS - 1000,
+    );
+    // First call (initial count): 2 completed. Second call (after abandon): 3 completed.
+    attemptRepo.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(SKILL_ASSESSMENT_MAX_ATTEMPTS);
+    attemptRepo.findOne.mockResolvedValue(
+      Object.assign(new AssessmentAttempt(), {
+        id: 'stale-attempt',
+        started_at: staleStartedAt,
+      }),
+    );
+
+    await expect(service.start(userId)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(attemptRepo.update).toHaveBeenCalledWith('stale-attempt', {
+      completed_at: expect.any(Date),
+      force_submitted: true,
+    });
+    expect(attemptRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('returns session_id and attempt_number when starting a skill assessment', async () => {
+    const result = await service.start(userId);
+
+    expect(result.session_id).toBe('attempt-1');
+    expect(result.attempt_number).toBe(1);
+    expect(result).not.toHaveProperty('attempt_id');
+    expect(result.questions).toHaveLength(20);
+    expect(result.questions[0].block).toBe('mcq');
+    expect(result.questions[19].block).toBe('mcq');
+    expect(attemptRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generated_questions_json: expect.objectContaining({
+          context: expect.objectContaining({
+            attempt_number: 1,
+          }),
+        }),
+      }),
+    );
+    expect(attemptRepo.save).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          question_id: 'skill-mcq-1',
+          user_answer: { served: true },
+        }),
+      ]),
+    );
+  });
+
+  it('returns attempt_number 3 when two skill attempts are already completed', async () => {
+    attemptRepo.count.mockResolvedValue(2);
+
+    const result = await service.start(userId);
+
+    expect(result.attempt_number).toBe(3);
+  });
+
+  it('refuses to start when the unseen bank lacks the skill question mix', async () => {
+    eligibleSkillQuestions = makeSkillBankQuestions().slice(0, 15);
+
+    await expect(service.start(userId)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    await expect(service.start(userId)).rejects.toMatchObject({
+      message: ErrorMessages.SKILL_ASSESSMENT.NO_QUESTIONS_AVAILABLE,
+    });
+    expect(bankExhaustedAlert.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assessmentType: 'skill',
+        detail: expect.stringContaining('Primary bank mix insufficient'),
+      }),
+    );
+    expect(attemptRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('retries without exclusion when bank is exhausted after excluding history', async () => {
+    attemptRepo.count.mockResolvedValue(1);
+    attemptRepo.findOne.mockResolvedValue(null); // no active session
+
+    let eligibleQueryCount = 0;
+    talentProfileRepo.manager.transaction.mockImplementation(
+      async (work: (manager: EntityManagerLike) => Promise<unknown>) => {
+        const manager: EntityManagerLike = {
+          findOne: jest.fn().mockResolvedValue(profile),
+          getRepository: jest.fn(() => attemptRepo),
+          createQueryBuilder: jest.fn(() => ({
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            orderBy: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockImplementation(() => {
+              eligibleQueryCount += 1;
+              // 1st call: excluded bank returns insufficient questions
+              if (eligibleQueryCount === 1) {
+                return makeSkillBankQuestions().slice(0, 5);
+              }
+              // 2nd call (retry without exclusion): returns full bank
+              if (eligibleQueryCount === 2) {
+                return makeSkillBankQuestions();
+              }
+              // probe queries
+              return makeProbeQuestions();
+            }),
+          })),
+          create: jest.fn((_entity: unknown, data: unknown) =>
+            attemptRepo.create(data),
+          ),
+          save: jest.fn((_entity: unknown, data: unknown) =>
+            attemptRepo.save(data),
+          ),
+          update: jest.fn(),
+        };
+        return work(manager);
+      },
+    );
+
+    const result = await service.start(userId);
+
+    expect(result.session_id).toBe('attempt-1');
+    expect(result.attempt_number).toBe(2);
+  });
+
+  it('excludes all previously served questions from full history', async () => {
+    attemptRepo.count.mockResolvedValue(1);
+    attemptRepo.findOne.mockResolvedValue(null);
+
+    let andWhereCallArgs: unknown[] = [];
+    talentProfileRepo.manager.transaction.mockImplementation(
+      async (work: (manager: EntityManagerLike) => Promise<unknown>) => {
+        const andWhereMock = jest.fn().mockReturnThis();
+        const manager: EntityManagerLike = {
+          findOne: jest.fn().mockResolvedValue(profile),
+          getRepository: jest.fn(() => attemptRepo),
+          createQueryBuilder: jest.fn(() => ({
+            where: jest.fn().mockReturnThis(),
+            andWhere: andWhereMock,
+            orderBy: jest.fn().mockReturnThis(),
+            getMany: jest.fn().mockResolvedValue(eligibleSkillQuestions),
+          })),
+          create: jest.fn((_entity: unknown, data: unknown) =>
+            attemptRepo.create(data),
+          ),
+          save: jest.fn((_entity: unknown, data: unknown) =>
+            attemptRepo.save(data),
+          ),
+          update: jest.fn(),
+        };
+        const result = await work(manager);
+        andWhereCallArgs = andWhereMock.mock.calls.map((call) => call[1]);
+        return result;
+      },
+    );
+
+    await service.start(userId);
+
+    const historyFilter = andWhereCallArgs.find(
+      (args): args is Record<string, unknown> =>
+        args !== null &&
+        typeof args === 'object' &&
+        'talentProfileId' in (args as Record<string, unknown>),
+    );
+
+    expect(historyFilter).toBeDefined();
+    expect(historyFilter!.talentProfileId).toBe(profile.id);
+    // Should NOT have lastAttemptId — full history is excluded
+    expect(historyFilter).not.toHaveProperty('lastAttemptId');
+  });
+
+  it('starts a retake session successfully with full history exclusion', async () => {
+    attemptRepo.count.mockResolvedValue(1);
+    attemptRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.start(userId);
+
+    expect(result.session_id).toBe('attempt-1');
+    expect(result.questions).toHaveLength(20);
+  });
+
+  it('returns a stored skill session without exposing correct answers or side effects', async () => {
+    const attempt = Object.assign(new AssessmentAttempt(), {
+      id: 'attempt-1',
+      talent_profile_id: profile.id,
+      assessment_type: AssessmentType.SKILL,
+      started_at: new Date('2026-05-21T10:00:00.000Z'),
+      completed_at: null,
+      generated_questions_json: {
+        context: { verified_level: VerifiedLevel.MID },
+        questions: [
+          {
+            question_id: 'question-1',
+            question_number: 1,
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'Which metric best indicates activation?',
+            options: ['Signups', 'First key action', 'Page views'],
+            correct_answer: 'First key action',
+          },
+        ],
+      },
+    });
+    attemptRepo.findOne.mockResolvedValue(attempt);
+
+    const first = await service.getSession(userId, attempt.id);
+    const second = await service.getSession(userId, attempt.id);
+
+    expect(first).toEqual(second);
+    expect(first).toEqual({
+      status: 'success',
+      message: 'Skill assessment session returned',
+      attempt_id: 'attempt-1',
+      session_id: 'attempt-1',
+      attempt_number: 1,
+      started_at: '2026-05-21T10:00:00.000Z',
+      verified_level: VerifiedLevel.MID,
+      questions: [
+        {
+          question_id: 'question-1',
+          question_number: 1,
+          block: 'mcq',
+          question_type: QuestionType.SINGLE_PICK,
+          question_text: 'Which metric best indicates activation?',
+          options: ['Signups', 'First key action', 'Page views'],
+        },
+      ],
+    });
+    expect(first.questions[0]).not.toHaveProperty('correct_answer');
+    expect(attemptRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('throws 404 when skill session does not exist for the talent', async () => {
+    attemptRepo.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.getSession(userId, 'missing-attempt'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('throws 400 when stored skill session has no questions', async () => {
+    attemptRepo.findOne.mockResolvedValue(
+      Object.assign(new AssessmentAttempt(), {
+        id: 'attempt-1',
+        talent_profile_id: profile.id,
+        assessment_type: AssessmentType.SKILL,
+        started_at: new Date('2026-05-21T10:00:00.000Z'),
+        generated_questions_json: {
+          context: { verified_level: VerifiedLevel.MID },
+          questions: [],
+        },
+      }),
+    );
+
+    await expect(
+      service.getSession(userId, 'attempt-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('returns session_id when submitting a skill assessment', async () => {
+    const attempt = Object.assign(new AssessmentAttempt(), {
+      id: 'attempt-1',
+      talent_profile_id: profile.id,
+      assessment_type: AssessmentType.SKILL,
+      started_at: new Date('2026-05-21T10:00:00.000Z'),
+      completed_at: null,
+      generated_questions_json: {
+        context: { verified_level: VerifiedLevel.MID },
+        questions: [
+          {
+            question_id: 'question-1',
+            question_number: 1,
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'Which metric best indicates activation?',
+            options: ['Signups', 'First key action', 'Page views'],
+            correct_answer: 'First key action',
+          },
+        ],
+      },
+    });
+    attemptRepo.findOne.mockResolvedValue(attempt);
+    questionRepo.findBy.mockResolvedValue([
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-1',
+        competency: 'activation',
+        metadata: {},
+      }),
+    ]);
+
+    const result = await service.submit(userId, {
+      attemptId: 'attempt-1',
+      answers: [{ questionId: 'question-1', answer: 'First key action' }],
+    });
+
+    expect(result.session_id).toBe('attempt-1');
+    expect(result.attempt_number).toBe(1);
+    expect(result).not.toHaveProperty('attempt_id');
+  });
+
+  it('includes retake metadata in the submit response', async () => {
+    const attempt = Object.assign(new AssessmentAttempt(), {
+      id: 'attempt-1',
+      talent_profile_id: profile.id,
+      assessment_type: AssessmentType.SKILL,
+      started_at: new Date('2026-05-21T10:00:00.000Z'),
+      completed_at: null,
+      generated_questions_json: {
+        context: { verified_level: VerifiedLevel.MID },
+        questions: [
+          {
+            question_id: 'question-1',
+            question_number: 1,
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'Which metric best indicates activation?',
+            options: ['Signups', 'First key action', 'Page views'],
+            correct_answer: 'First key action',
+          },
+        ],
+      },
+    });
+    attemptRepo.findOne.mockResolvedValue(attempt);
+    attemptRepo.count.mockResolvedValue(1);
+    questionRepo.findBy.mockResolvedValue([
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-1',
+        competency: 'activation',
+        metadata: {},
+      }),
+    ]);
+
+    const result = await service.submit(userId, {
+      attemptId: 'attempt-1',
+      answers: [{ questionId: 'question-1', answer: 'Wrong answer' }],
+    });
+
+    expect(result.max_attempts).toBe(SKILL_ASSESSMENT_MAX_ATTEMPTS);
+    expect(result.attempts_used).toBe(1);
+    expect(result.retake_available).toBe(true);
+  });
+
+  it('does not pass when all primary MCQs are wrong', async () => {
+    const attempt = Object.assign(new AssessmentAttempt(), {
+      id: 'attempt-1',
+      talent_profile_id: profile.id,
+      assessment_type: AssessmentType.SKILL,
+      started_at: new Date('2026-05-21T10:00:00.000Z'),
+      completed_at: null,
+      generated_questions_json: {
+        context: { verified_level: VerifiedLevel.MID },
+        questions: [
+          {
+            question_id: 'question-mcq-1',
+            question_number: 1,
+            block: 'mcq',
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'Which metric best indicates activation?',
+            options: ['Signups', 'First key action', 'Page views'],
+            correct_answer: 'First key action',
+          },
+          {
+            question_id: 'question-mcq-2',
+            question_number: 2,
+            block: 'mcq',
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'What is the primary goal?',
+            options: ['Growth', 'Retention', 'Awareness'],
+            correct_answer: 'Growth',
+          },
+        ],
+      },
+    });
+    attemptRepo.findOne.mockResolvedValue(attempt);
+    questionRepo.findBy.mockResolvedValue([
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-mcq-1',
+        metadata: {},
+      }),
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-mcq-2',
+        metadata: {},
+      }),
+    ]);
+
+    const result = await service.submit(userId, {
+      attemptId: 'attempt-1',
+      answers: [
+        { questionId: 'question-mcq-1', answer: 'Signups' },
+        { questionId: 'question-mcq-2', answer: 'Retention' },
+      ],
+    });
+
+    expect(result.percentage).toBe(0);
+    expect(result.passed).toBe(false);
+    expect(result.failed).toBe(true);
+    expect(result.validated_level).toBeNull();
+  });
+
+  it('returns failed without profile verification when overall is below 50%', async () => {
+    const attempt = Object.assign(new AssessmentAttempt(), {
+      id: 'attempt-1',
+      talent_profile_id: profile.id,
+      assessment_type: AssessmentType.SKILL,
+      started_at: new Date('2026-05-21T10:00:00.000Z'),
+      completed_at: null,
+      generated_questions_json: {
+        context: { verified_level: VerifiedLevel.MID },
+        questions: [
+          {
+            question_id: 'question-mcq-1',
+            question_number: 1,
+            block: 'mcq',
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'Which metric best indicates activation?',
+            options: ['Signups', 'First key action', 'Page views'],
+            correct_answer: 'First key action',
+          },
+          {
+            question_id: 'question-mcq-2',
+            question_number: 2,
+            block: 'mcq',
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'What is the primary goal?',
+            options: ['Growth', 'Retention', 'Awareness'],
+            correct_answer: 'Growth',
+          },
+        ],
+      },
+    });
+    attemptRepo.findOne.mockResolvedValue(attempt);
+    questionRepo.findBy.mockResolvedValue([
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-mcq-1',
+        metadata: {},
+      }),
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-mcq-2',
+        metadata: {},
+      }),
+    ]);
+
+    const updateMock = jest.fn();
+    talentProfileRepo.manager.transaction.mockImplementation(
+      async (work: (manager: EntityManagerLike) => Promise<unknown>) => {
+        const manager: EntityManagerLike = {
+          findOne: jest.fn(),
+          getRepository: jest.fn(() => attemptRepo),
+          createQueryBuilder: jest.fn(),
+          save: jest.fn(),
+          update: updateMock,
+          create: jest.fn((_entity: unknown, data: unknown) => data),
+        };
+        return work(manager);
+      },
+    );
+
+    const result = await service.submit(userId, {
+      attemptId: 'attempt-1',
+      answers: [
+        { questionId: 'question-mcq-1', answer: 'Signups' },
+        { questionId: 'question-mcq-2', answer: 'Retention' },
+      ],
+    });
+
+    expect(result.failed).toBe(true);
+    expect(result.status).toBe('failed');
+    expect(result.percentage).toBeLessThan(50);
+    expect(result.validated_level).toBeNull();
+    expect(result.passed).toBe(false);
+    expect(updateMock).toHaveBeenCalledWith(
+      TalentProfile,
+      { id: profile.id },
+      { status: expect.any(String) },
+    );
+    expect(updateMock).not.toHaveBeenCalledWith(
+      TalentProfile,
+      { id: profile.id },
+      expect.objectContaining({
+        skill_assessment_completed_at: expect.any(Date),
+      }),
+    );
+  });
+
+  it('scores MCQ answers correctly as pass when majority are correct', async () => {
+    const attempt = Object.assign(new AssessmentAttempt(), {
+      id: 'attempt-1',
+      talent_profile_id: profile.id,
+      assessment_type: AssessmentType.SKILL,
+      started_at: new Date('2026-05-21T10:00:00.000Z'),
+      completed_at: null,
+      generated_questions_json: {
+        context: { verified_level: VerifiedLevel.MID },
+        questions: [
+          {
+            question_id: 'question-mcq-1',
+            question_number: 1,
+            block: 'mcq',
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'Q1?',
+            options: ['A', 'B'],
+            correct_answer: 'A',
+          },
+          {
+            question_id: 'question-mcq-2',
+            question_number: 2,
+            block: 'mcq',
+            question_type: QuestionType.SINGLE_PICK,
+            question_text: 'Q2?',
+            options: ['A', 'B'],
+            correct_answer: 'A',
+          },
+        ],
+      },
+    });
+    attemptRepo.findOne.mockResolvedValue(attempt);
+    questionRepo.findBy.mockResolvedValue([
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-mcq-1',
+        metadata: {},
+      }),
+      Object.assign(new AssessmentQuestion(), {
+        id: 'question-mcq-2',
+        metadata: {},
+      }),
+    ]);
+
+    const result = await service.submit(userId, {
+      attemptId: 'attempt-1',
+      answers: [
+        { questionId: 'question-mcq-1', answer: 'A' },
+        { questionId: 'question-mcq-2', answer: 'A' },
+      ],
+    });
+
+    expect(result.percentage).toBe(100);
+    expect(result.passed).toBe(true);
+    expect(result.failed).toBe(false);
+  });
+
+  it('resolves Stage 2 confirmed-level outcomes from claimed-level score', () => {
+    const resolveLevel = (
+      service as unknown as {
+        resolveValidatedLevel: (
+          claimedPercentage: number,
+          aboveLevelPercentage: number,
+          belowLevelPercentage: number,
+          overallPercentage: number,
+          claimedLevel: VerifiedLevel,
+          primaryMcqGatePassed?: boolean,
+          aboveProbeMcqGatePassed?: boolean,
+        ) => VerifiedLevel;
+      }
+    ).resolveValidatedLevel.bind(service);
+
+    expect(resolveLevel(70, 0, 0, 70, VerifiedLevel.MID)).toBe(
+      VerifiedLevel.MID,
+    );
+    expect(resolveLevel(59, 0, 65, 60, VerifiedLevel.SENIOR)).toBe(
+      VerifiedLevel.SENIOR,
+    );
+    expect(resolveLevel(59, 0, 50, 58, VerifiedLevel.SENIOR)).toBe(
+      VerifiedLevel.SENIOR,
+    );
+    expect(resolveLevel(54, 0, 0, 54, VerifiedLevel.EXPERT)).toBe(
+      VerifiedLevel.JUNIOR,
+    );
+    expect(resolveLevel(54, 0, 0, 54, VerifiedLevel.JUNIOR)).toBe(
+      VerifiedLevel.JUNIOR,
+    );
+    expect(resolveLevel(95, 70, 0, 92, VerifiedLevel.MID)).toBe(
+      VerifiedLevel.SENIOR,
+    );
+    expect(resolveLevel(95, 70, 0, 92, VerifiedLevel.MID, true, false)).toBe(
+      VerifiedLevel.MID,
+    );
+    expect(resolveLevel(70, 0, 0, 70, VerifiedLevel.MID, false, true)).toBe(
+      VerifiedLevel.JUNIOR,
+    );
+    expect(resolveLevel(95, 50, 0, 90, VerifiedLevel.MID)).toBe(
+      VerifiedLevel.MID,
+    );
+    expect(resolveLevel(65, 0, 0, 65, VerifiedLevel.MID)).toBe(
+      VerifiedLevel.MID,
+    );
+  });
+
+  it('does not enforce attempt limit after advanced assessment is complete', async () => {
+    profile.advanced_assessment_completed_at = new Date();
+    attemptRepo.count.mockResolvedValue(SKILL_ASSESSMENT_MAX_ATTEMPTS);
+
+    await expect(
+      (
+        service as unknown as {
+          assertSkillAssessmentAttemptsRemaining: (
+            p: TalentProfile,
+          ) => Promise<void>;
+        }
+      ).assertSkillAssessmentAttemptsRemaining(profile),
+    ).resolves.toBeUndefined();
+
+    expect(attemptRepo.count).not.toHaveBeenCalled();
+  });
+
+  describe('flag()', () => {
+    it('voids an active skill session and returns logout action', async () => {
+      const attempt = Object.assign(new AssessmentAttempt(), {
+        id: 'attempt-1',
+        talent_profile_id: profile.id,
+        assessment_type: AssessmentType.SKILL,
+        completed_at: null,
+        force_submitted: false,
+        tab_switch_count: 0,
+        copy_paste_count: 0,
+      });
+
+      talentProfileRepo.manager.transaction.mockImplementation(
+        async (
+          work: (manager: Record<string, jest.Mock>) => Promise<unknown>,
+        ) =>
+          work({
+            findOne: jest
+              .fn()
+              .mockResolvedValueOnce(attempt)
+              .mockResolvedValueOnce({
+                ...attempt,
+                tab_switch_count: 1,
+                copy_paste_count: 0,
+              }),
+            increment: jest.fn().mockResolvedValue(undefined),
+            update: jest.fn().mockResolvedValue(undefined),
+          }),
+      );
+
+      const result = await service.flag(userId, 'attempt-1', {
+        eventType: IntegrityEventType.TAB_SWITCH,
+      });
+
+      expect(result.status).toBe('voided');
+      expect(result.action).toBe('logout');
+      expect(result.sessionVoided).toBe(true);
+      expect(result.tabSwitchCount).toBe(1);
+    });
+
+    it('throws 400 when flagging a completed skill session', async () => {
+      talentProfileRepo.manager.transaction.mockImplementation(
+        async (
+          work: (manager: Record<string, jest.Mock>) => Promise<unknown>,
+        ) =>
+          work({
+            findOne: jest.fn().mockResolvedValue(
+              Object.assign(new AssessmentAttempt(), {
+                id: 'attempt-1',
+                completed_at: new Date(),
+              }),
+            ),
+          }),
+      );
+
+      await expect(
+        service.flag(userId, 'attempt-1', {
+          eventType: IntegrityEventType.COPY_PASTE,
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+});
+
+type EntityManagerLike = {
+  findOne: jest.Mock;
+  getRepository: jest.Mock;
+  createQueryBuilder: jest.Mock;
+  create: jest.Mock;
+  save: jest.Mock;
+  update: jest.Mock;
+};
+
+function makeSkillBankQuestions(): AssessmentQuestion[] {
+  return Array.from({ length: 16 }, (_ignored, index) =>
+    Object.assign(new AssessmentQuestion(), {
+      id: `skill-mcq-${index + 1}`,
+      question_type: QuestionType.SINGLE_PICK,
+      question_text: `Skill MCQ ${index + 1}`,
+      options: ['A', 'B'],
+      correct_answer: 'A',
+    }),
+  );
+}
+
+function makeProbeQuestions(): AssessmentQuestion[] {
+  return [
+    Object.assign(new AssessmentQuestion(), {
+      id: 'probe-mcq-1',
+      question_type: QuestionType.SINGLE_PICK,
+      question_text: 'Probe MCQ 1',
+      options: ['A', 'B'],
+      correct_answer: 'A',
+    }),
+    Object.assign(new AssessmentQuestion(), {
+      id: 'probe-mcq-2',
+      question_type: QuestionType.SINGLE_PICK,
+      question_text: 'Probe MCQ 2',
+      options: ['A', 'B'],
+      correct_answer: 'A',
+    }),
+  ];
+}

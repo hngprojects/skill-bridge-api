@@ -2,7 +2,11 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsNotEmpty } from 'class-validator';
 import { TALENT_ROLE_TRACKS } from '../talent.constants';
 
-export class SaveTrackDto {
+export type SaveTrackBody = {
+  track: string;
+};
+
+export class SaveTrackDto implements SaveTrackBody {
   @ApiProperty({
     example: 'frontend_developer',
     enum: TALENT_ROLE_TRACKS,

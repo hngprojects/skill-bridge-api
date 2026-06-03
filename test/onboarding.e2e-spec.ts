@@ -332,7 +332,7 @@ const accessCookieHeaderFor = async (
       sub: user.id,
       email: user.email,
       role: user.role,
-      onboardingComplete: user.onboarding_complete,
+      onboarding_complete: user.onboarding_complete,
     },
     {
       secret: env.JWT_ACCESS_SECRET,
@@ -347,6 +347,7 @@ describe('Onboarding (e2e)', () => {
   let app: INestApplication<App>;
   let usersService: InMemoryUsersService;
   let jwtService: JwtService;
+  let uploadService: { uploadAvatar: jest.Mock };
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -404,7 +405,11 @@ describe('Onboarding (e2e)', () => {
         {
           provide: UploadService,
           useValue: {
-            uploadAvatar: jest.fn().mockResolvedValue('https://bucket.s3.region.amazonaws.com/avatars/test.jpg'),
+            uploadAvatar: jest
+              .fn()
+              .mockResolvedValue(
+                'https://bucket.s3.region.amazonaws.com/avatars/test.jpg',
+              ),
           },
         },
         { provide: APP_GUARD, useClass: JwtAuthGuard },
@@ -427,6 +432,7 @@ describe('Onboarding (e2e)', () => {
 
     usersService = moduleFixture.get(UsersService);
     jwtService = moduleFixture.get(JwtService);
+    uploadService = moduleFixture.get(UploadService);
   });
 
   afterEach(async () => {
@@ -454,7 +460,7 @@ describe('Onboarding (e2e)', () => {
       message: 'Talent onboarding completed',
       user: {
         role: UserRole.TALENT,
-        onboardingComplete: true,
+        onboarding_complete: true,
       },
       profile: {
         user_id: user.id,
@@ -496,6 +502,30 @@ describe('Onboarding (e2e)', () => {
       });
   });
 
+  it('POST /talent/profile completes profile onboarding without a photo', async () => {
+    const user = (await usersService.findOne('talent-user')) as TalentUser;
+    const cookieHeader = await accessCookieHeaderFor(jwtService, user);
+
+    const response = await request(app.getHttpServer())
+      .post('/talent/profile')
+      .set('Cookie', cookieHeader)
+      .field('region', 'Nigeria')
+      .field('educationLevel', 'bachelor')
+      .field('linkedinProfile', 'https://www.linkedin.com/in/caseytalent')
+      .expect(201);
+
+    expect(uploadService.uploadAvatar).not.toHaveBeenCalled();
+    expect(response.body).toMatchObject({
+      status_code: 201,
+      status: 'success',
+      message: 'Profile saved',
+    });
+
+    const updatedUser = await usersService.findOne(user.id);
+    expect(updatedUser.avatar_url).toBeNull();
+    expect(updatedUser.onboarding_complete).toBe(true);
+  });
+
   it('POST /employer/onboarding completes employer onboarding', async () => {
     const user = (await usersService.findOne('employer-user')) as EmployerUser;
     const cookieHeader = await accessCookieHeaderFor(jwtService, user);
@@ -517,7 +547,7 @@ describe('Onboarding (e2e)', () => {
       message: 'Employer onboarding completed',
       user: {
         role: UserRole.EMPLOYER,
-        onboardingComplete: true,
+        onboarding_complete: true,
       },
       profile: {
         user_id: user.id,

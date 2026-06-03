@@ -37,7 +37,7 @@ lerna-debug.log*
 !.vscode/extensions.json
 
 # dotenv environment variable files
-.env
+.env*
 .env.development.local
 .env.test.local
 .env.production.local
@@ -52,4 +52,12 @@ pids
 *.pid
 *.seed
 *.pid.lock
+.local-pg/
 
+# Generated advanced assessment question bank (generate locally — not committed)
+data/question-banks/seed-advanced.json
+data/question-banks/seed-advanced.manifest.json
+
+# Generated skill assessment question bank (generate locally — not committed)
+data/question-banks/seed-skill.json
+data/question-banks/seed-skill.manifest.json

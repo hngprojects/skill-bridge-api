@@ -17,6 +17,10 @@ import { PaginationDto } from './dto/pagination.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { User, UserRole } from './entities/user.entity';
 import { OAuthUserModelAction } from './actions/user-oauth.action';
+import {
+  AccountDeletionAudit,
+  AccountDeletionType,
+} from './entities/account-deletion-audit.entity';
 import { OAuthUser } from './entities/user-oauth.entity';
 import {
   ConflictError,
@@ -24,6 +28,7 @@ import {
   InternalServerError,
   NotFoundError,
 } from '../../shared';
+import { normalizeEmail } from '../../common/transforms/normalize-email';
 import type { OAuthSignupRole } from '../auth/oauth-signup-role';
 import { OAuthSignupRoleRequiredException } from '../auth/exceptions/oauth-signup-role-required.exception';
 
@@ -49,6 +54,11 @@ export type OAuthProviderProfileInput = {
 
 export const OAUTH_DEFAULT_COUNTRY = 'Unknown';
 
+export type AccountDeletionMetadata = {
+  ip_address?: string | null;
+  user_agent?: string | null;
+};
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -60,31 +70,40 @@ export class UsersService {
   ) {}
 
   async create(dto: CreateUserDto): Promise<User> {
-    const existing = await this.userModelAction.findByEmail(dto.email);
+    const normalizedEmail = normalizeEmail(dto.email) as string;
+    const existing = await this.userModelAction.findByEmail(normalizedEmail);
     if (existing) {
       throw new ConflictError(ErrorMessages.USER.EMAIL_ALREADY_REGISTERED);
     }
 
     const passwordHash = await argon2.hash(dto.password);
     const signupReason =
-      dto.signup_reason == null || dto.signup_reason.trim() === ''
+      dto.signupReason == null || dto.signupReason.trim() === ''
         ? null
-        : dto.signup_reason.trim();
-    return this.userModelAction.create({
-      ...NO_TRANSACTION,
-      createPayload: {
-        email: dto.email,
-        password: passwordHash,
-        first_name: dto.first_name,
-        last_name: dto.last_name,
-        country: dto.country,
-        avatar_url: dto.profile_pic_url ?? null,
-        is_verified: false,
-        onboarding_complete: false,
-        role: dto.role ?? UserRole.TALENT,
-        signup_reason: signupReason,
-      },
-    });
+        : dto.signupReason.trim();
+
+    try {
+      return await this.userModelAction.create({
+        ...NO_TRANSACTION,
+        createPayload: {
+          email: normalizedEmail,
+          password: passwordHash,
+          first_name: dto.firstName,
+          last_name: dto.lastName,
+          country: dto.country,
+          avatar_url: dto.profilePicUrl ?? null,
+          is_verified: false,
+          onboarding_complete: false,
+          role: dto.role ?? UserRole.TALENT,
+          signup_reason: signupReason,
+        },
+      });
+    } catch (err) {
+      if (isPostgresUniqueViolation(err)) {
+        throw new ConflictError(ErrorMessages.USER.EMAIL_ALREADY_REGISTERED);
+      }
+      throw err;
+    }
   }
 
   findAll(pagination: PaginationDto) {
@@ -109,13 +128,13 @@ export class UsersService {
   }
 
   findByEmail(email: string): Promise<User | null> {
-    return this.userModelAction.findByEmail(email);
+    return this.userModelAction.findByEmail(normalizeEmail(email) as string);
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<User> {
     await this.findOne(id);
 
-    const { profile_pic_url: profilePicUrl, ...userDto } = dto;
+    const { profilePicUrl, ...userDto } = dto;
     const payload: Partial<User> = {
       ...userDto,
       ...(profilePicUrl !== undefined ? { avatar_url: profilePicUrl } : {}),
@@ -141,6 +160,60 @@ export class UsersService {
       ...NO_TRANSACTION,
       identifierOptions: { id },
     });
+  }
+
+  async softDeleteAccountWithAudit(
+    id: string,
+    metadata: AccountDeletionMetadata = {},
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const userRepo = manager.getRepository(User);
+      const auditRepo = manager.getRepository(AccountDeletionAudit);
+      const user = await userRepo.findOne({ where: { id } });
+      if (!user) throw new NotFoundError(ErrorMessages.USER.NOT_FOUND(id));
+
+      await auditRepo.save(
+        auditRepo.create({
+          user_id: user.id,
+          email_at_deletion: user.email,
+          first_name_at_deletion: user.first_name,
+          last_name_at_deletion: user.last_name,
+          role: user.role,
+          country: user.country,
+          ip_address: metadata.ip_address ?? null,
+          user_agent: metadata.user_agent ?? null,
+          deletion_type: AccountDeletionType.SELF_SERVICE,
+          deleted_by_user_id: user.id,
+        }),
+      );
+
+      await userRepo.update(
+        { id },
+        {
+          email: `deleted+${id}@deleted.local`,
+          refreshTokenHash: null,
+          avatar_url: null,
+        },
+      );
+      await userRepo.softDelete({ id });
+    });
+  }
+
+  async updateEmail(id: string, email: string): Promise<User> {
+    const normalizedEmail = normalizeEmail(email) as string;
+    try {
+      await this.userModelAction.update({
+        ...NO_TRANSACTION,
+        identifierOptions: { id },
+        updatePayload: { email: normalizedEmail, refreshTokenHash: null },
+      });
+    } catch (err) {
+      if (isPostgresUniqueViolation(err)) {
+        throw new ConflictError(ErrorMessages.USER.EMAIL_ALREADY_REGISTERED);
+      }
+      throw err;
+    }
+    return this.findOne(id);
   }
 
   async setRefreshTokenHash(id: string, hash: string | null): Promise<void> {
@@ -299,12 +372,14 @@ export class UsersService {
       return this.findOne(byEmail.id);
     }
 
+    const normalizedEmail = profile.email.toLowerCase().trim();
+
     try {
       if (!signupRole) {
         throw new OAuthSignupRoleRequiredException();
       }
       return await this.createVerifiedUserWithOauthLink({
-        email: profile.email,
+        email: normalizedEmail,
         first_name: profile.firstName,
         last_name: profile.lastName,
         country: OAUTH_DEFAULT_COUNTRY,

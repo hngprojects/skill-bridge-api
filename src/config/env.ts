@@ -53,6 +53,12 @@ export const env = createEnv({
       .default(3),
 
     PASSWORD_RESET_OTP_EXPIRES_IN: durationString('15m'),
+    /** Max forgot-password requests allowed per account within a 1-hour rolling window. */
+    PASSWORD_RESET_RATE_LIMIT_PER_HOUR: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(5),
 
     CORS_ORIGIN: z.string().default('http://localhost:3000'),
     AUTH_COOKIE_SAMESITE: z.enum(['strict', 'lax', 'none']).optional(),
@@ -72,10 +78,47 @@ export const env = createEnv({
     EMAIL_LOGO_URL: z.string().url().optional(),
     SUPPORT_EMAIL: z.email().default('support@skillbridge.com'),
 
+    /**
+     * Comma-separated content team emails notified on BANK_EXHAUSTED (503).
+     * Each token is validated as an email address at startup.
+     */
+    CONTENT_TEAM_BANK_ALERT_EMAILS: z
+      .string()
+      .optional()
+      .refine(
+        (val) => {
+          if (!val?.trim()) return true;
+          return val
+            .split(',')
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0)
+            .every((t) => z.string().email().safeParse(t).success);
+        },
+        {
+          message:
+            'CONTENT_TEAM_BANK_ALERT_EMAILS must be a comma-separated list of valid email addresses',
+        },
+      ),
+
     AWS_REGION: z.string().optional(),
     AWS_S3_BUCKET: z.string().optional(),
     AWS_ACCESS_KEY_ID: z.string().optional(),
     AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_ENDPOINT: z.string().url().optional(),
+    AWS_PUBLIC_URL: z.string().url().optional(),
+
+    OPENROUTER_API_KEY: z.string().min(1).optional(),
+    OPENROUTER_MODEL: z.string().default('openai/gpt-oss-120b:free'),
+    OPENROUTER_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
+
+    ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-5'),
+
+    GEMINI_API_KEY: z.string().min(1).optional(),
+    GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
+
+    YOUTUBE_API_KEY: z.string().min(1).optional(),
+    SERPER_API_KEY: z.string().min(1).optional(),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

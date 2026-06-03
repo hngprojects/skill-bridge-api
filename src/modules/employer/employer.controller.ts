@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   Res,
   UsePipes,
@@ -22,6 +24,7 @@ import { setAuthCookies } from '../auth/auth.cookies';
 import { UserRole } from '../users/entities/user.entity';
 import { CompleteEmployerOnboardingDto } from './dto/complete-employer-onboarding.dto';
 import { SaveEmployerProfileDto } from './dto/save-employer-profile.dto';
+import { UpdateEmployerProfileDto } from './dto/update-employer-profile.dto';
 import { EmployerService } from './employer.service';
 
 @ApiTags('employer')
@@ -31,11 +34,24 @@ import { EmployerService } from './employer.service';
 export class EmployerController {
   constructor(private readonly employerService: EmployerService) {}
 
+  @Get('profile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get employer profile for edit state' })
+  async getProfile(@CurrentUser('sub') userId: string) {
+    return this.employerService.getProfile(userId);
+  }
+
   @Post('profile')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Save employer profile and complete onboarding (BE-ONB-EMP-001)' })
-  @ApiUnprocessableEntityResponse({ description: 'Validation failed — field-specific error messages' })
-  @ApiForbiddenResponse({ description: 'Onboarding already completed or wrong role' })
+  @ApiOperation({
+    summary: 'Save employer profile and complete onboarding (BE-ONB-EMP-001)',
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'Validation failed — field-specific error messages',
+  })
+  @ApiForbiddenResponse({
+    description: 'Onboarding already completed or wrong role',
+  })
   @UsePipes(
     new ValidationPipe({
       whitelist: true,
@@ -48,6 +64,28 @@ export class EmployerController {
     @Body() dto: SaveEmployerProfileDto,
   ) {
     return this.employerService.saveProfile(userId, dto);
+  }
+
+  @Patch('profile')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Update employer profile fields after onboarding',
+  })
+  @ApiUnprocessableEntityResponse({
+    description: 'Validation failed — field-specific error messages',
+  })
+  @UsePipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+    }),
+  )
+  async updateProfile(
+    @CurrentUser('sub') userId: string,
+    @Body() dto: UpdateEmployerProfileDto,
+  ) {
+    return this.employerService.updateProfile(userId, dto);
   }
 
   /** Legacy single-step onboarding — kept for backward compatibility. */

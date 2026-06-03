@@ -6,13 +6,18 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 import {
+  EMPLOYER_COMPANY_SIZES,
   EMPLOYER_DESIRED_ROLES,
   EMPLOYER_HIRING_RANGES,
   EMPLOYER_JOINING_AS,
+  EMPLOYER_PREFERRED_EXPERIENCE_LEVELS,
+  LINKEDIN_COMPANY_PAGE_ERROR,
+  LINKEDIN_COMPANY_URL_REGEX,
 } from '../employer.constants';
 
 export class CompleteEmployerOnboardingDto {
@@ -25,6 +30,25 @@ export class CompleteEmployerOnboardingDto {
     message: `joiningAs must be one of: ${EMPLOYER_JOINING_AS.join(', ')}`,
   })
   joiningAs: string;
+
+  @ApiProperty({ example: 'Acme Labs' })
+  @IsString()
+  @MinLength(1, { message: 'companyName is required' })
+  @MaxLength(255)
+  companyName: string;
+
+  @ApiProperty({
+    example: '11-50',
+    enum: EMPLOYER_COMPANY_SIZES,
+  })
+  @IsIn(EMPLOYER_COMPANY_SIZES, { message: 'Invalid company size selection' })
+  companySize: string;
+
+  @ApiProperty({ example: 'Fintech' })
+  @IsString()
+  @MinLength(1, { message: 'industry is required' })
+  @MaxLength(100)
+  industry: string;
 
   @ApiProperty({
     example: ['frontend_developer', 'backend_developer'],
@@ -41,6 +65,20 @@ export class CompleteEmployerOnboardingDto {
   desiredRoles: string[];
 
   @ApiProperty({
+    example: ['junior', 'mid'],
+    enum: EMPLOYER_PREFERRED_EXPERIENCE_LEVELS,
+    isArray: true,
+    description: 'Preferred experience levels',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Select at least one experience level' })
+  @IsIn(EMPLOYER_PREFERRED_EXPERIENCE_LEVELS, {
+    each: true,
+    message: 'Invalid experience level selection',
+  })
+  preferredExperienceLevels: string[];
+
+  @ApiProperty({
     example: 'Nigeria',
     description: 'Region the employer is hiring from or targeting',
   })
@@ -52,7 +90,8 @@ export class CompleteEmployerOnboardingDto {
   @ApiProperty({
     example: '6_10',
     enum: EMPLOYER_HIRING_RANGES,
-    description: 'Approximate number of talents to hire: 1_5 | 6_10 | 11_25 | 26_50 | 51_plus',
+    description:
+      'Approximate number of talents to hire: 1_5 | 6_10 | 11_25 | 26_50 | 51_plus',
   })
   @IsIn(EMPLOYER_HIRING_RANGES, {
     message: `hiringCountRange must be one of: ${EMPLOYER_HIRING_RANGES.join(', ')}`,
@@ -67,4 +106,15 @@ export class CompleteEmployerOnboardingDto {
   @IsUrl({}, { message: 'companyWebsite must be a valid URL' })
   @MaxLength(500)
   companyWebsite?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://www.linkedin.com/company/acmelabs',
+    description: 'LinkedIn company page URL',
+  })
+  @IsOptional()
+  @Matches(LINKEDIN_COMPANY_URL_REGEX, {
+    message: LINKEDIN_COMPANY_PAGE_ERROR,
+  })
+  @MaxLength(500)
+  linkedinCompanyPageUrl?: string;
 }

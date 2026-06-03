@@ -24,6 +24,19 @@ export const EMPLOYER_DESIRED_ROLES = [
   'mobile_developer',
   'cybersecurity',
   'data_scientist',
+  'marketing',
+  'quality_assurance',
+  'fullstack_developer',
+  'data_engineer',
+  'ml_engineer',
+  'business_analyst',
+  'bi_developer',
+  'ux_researcher',
+  'brand_designer',
+  'customer_success',
+  'project_manager',
+  'operations_manager',
+  'hr_people_ops',
 ] as const;
 
 export type EmployerDesiredRole = (typeof EMPLOYER_DESIRED_ROLES)[number];
@@ -47,3 +60,19 @@ export const EMPLOYER_HIRING_LOCATIONS = [
   'Europe',
   'North America',
 ] as const;
+
+export const EMPLOYER_PREFERRED_EXPERIENCE_LEVELS = [
+  'junior',
+  'mid',
+  'senior',
+] as const;
+
+/** Shared LinkedIn company page URL validation. */
+export const LINKEDIN_COMPANY_URL_REGEX = new RegExp(
+  /^https?:\/\/(www\.)?linkedin\.com\/company\/[A-Za-z0-9\-_]+(?:\/)?(?:[/?#].*)?$/
+    .source,
+  'i',
+);
+
+export const LINKEDIN_COMPANY_PAGE_ERROR =
+  'linkedin_company_page_url must be a valid LinkedIn company page URL';

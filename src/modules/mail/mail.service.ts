@@ -2,7 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Resend } from 'resend';
 import { env } from '../../config/env';
 import { loadMailTemplateFile, substituteMailTemplate } from './mail-templates';
-import type { PasswordResetEmailPayload, SendMailOptions } from './mail.types';
+import type {
+  AdvancedRetakeAvailableEmailPayload,
+  AssessmentPerformanceEmailPayload,
+  BankExhaustedAlertPayload,
+  JobReadyMatchesDigestEmailPayload,
+  PasswordResetEmailPayload,
+  SendMailOptions,
+} from './mail.types';
 import { OutboundEmailQueueService } from './outbound-email-queue.service';
 
 @Injectable()
@@ -12,7 +19,7 @@ export class MailService {
 
   constructor(private readonly outboundEmailQueue: OutboundEmailQueueService) {}
 
-  async send({ to, subject, html, text, from }: SendMailOptions) {
+  async send({ to, subject, html, text, from, attachments }: SendMailOptions) {
     if (!html && !text) {
       throw new Error('Sending a mail requires either `html` or `text`.');
     }
@@ -21,6 +28,7 @@ export class MailService {
       from: from ?? env.RESEND_MAIL_FROM,
       to,
       subject,
+      ...(attachments?.length ? { attachments } : {}),
     };
 
     const payload: Parameters<Resend['emails']['send']>[0] = html
@@ -74,7 +82,6 @@ export class MailService {
       playStoreLink: '#',
       appStoreLink: '#',
       supportEmail: env.SUPPORT_EMAIL,
-      unsubscribeUrl: `${base}/email-preferences`,
       year: String(new Date().getFullYear()),
       expiresMinutes: String(expiresInMinutes),
       ...digitVars,
@@ -82,11 +89,158 @@ export class MailService {
 
     const rawHtml = loadMailTemplateFile('verify-code.html');
     const html = substituteMailTemplate(rawHtml, vars);
-    const text = `Hi ${vars.name},\n\nYour SkillBridge verification code is ${padded}. It expires in ${expiresInMinutes} minute(s).\n`;
+    const text =
+      `Hi ${vars.name},\n\n` +
+      `Use this code to verify your SkillBridge account: ${padded}.\n` +
+      `It expires in ${expiresInMinutes} minute(s). If you did not create a SkillBridge account, you can ignore this email safely.\n`;
 
     return this.send({
       to: params.to,
       subject: 'Verify your SkillBridge email',
+      text,
+      html,
+    });
+  }
+
+  async sendAssessmentPerformance(params: AssessmentPerformanceEmailPayload) {
+    const base = env.FRONTEND_URL.replace(/\/$/, '');
+    const logoUrl =
+      env.EMAIL_LOGO_URL ??
+      'https://placehold.co/140x40/1f5f6b/ffffff/png?text=SkillBridge';
+    const dashboardUrl = `${base}/t/dashboard`;
+    const name = params.recipientFirstName.trim() || 'there';
+
+    const vars: Record<string, string> = {
+      name,
+      score: String(params.score),
+      maxScore: String(params.maxScore),
+      percentage: String(params.percentage),
+      tierLabel: params.tierLabel,
+      dashboardUrl,
+      logoUrl,
+      supportEmail: env.SUPPORT_EMAIL,
+      year: String(new Date().getFullYear()),
+    };
+
+    const rawHtml = loadMailTemplateFile('assessment-performance.html');
+    const html = substituteMailTemplate(rawHtml, vars);
+    const text =
+      `Hi ${name},\n\n` +
+      `Your advanced assessment is complete. You scored ${vars.score}/${vars.maxScore} (${vars.percentage}%) — tier: ${vars.tierLabel}.\n\n` +
+      `View your full results on your dashboard: ${dashboardUrl}\n`;
+
+    return this.send({
+      to: params.to,
+      subject: 'Your SkillBridge assessment results are ready',
+      text,
+      html,
+    });
+  }
+
+  async sendAdvancedRetakeAvailable(
+    params: AdvancedRetakeAvailableEmailPayload,
+  ) {
+    const base = env.FRONTEND_URL.replace(/\/$/, '');
+    const logoUrl =
+      env.EMAIL_LOGO_URL ??
+      'https://placehold.co/140x40/1f5f6b/ffffff/png?text=SkillBridge';
+    const dashboardUrl = `${base}/t/dashboard`;
+    const name = params.recipientFirstName.trim() || 'there';
+
+    const vars: Record<string, string> = {
+      name,
+      dashboardUrl,
+      logoUrl,
+      supportEmail: env.SUPPORT_EMAIL,
+      year: String(new Date().getFullYear()),
+    };
+
+    const rawHtml = loadMailTemplateFile('advanced-retake-available.html');
+    const html = substituteMailTemplate(rawHtml, vars);
+    const text =
+      `Hi ${name},\n\n` +
+      `Your 14-day advanced assessment waiting period has ended. You can retake the assessment now.\n\n` +
+      `Go to your dashboard: ${dashboardUrl}\n`;
+
+    return this.send({
+      to: params.to,
+      subject: 'You can retake your advanced assessment',
+      text,
+      html,
+    });
+  }
+
+  async sendJobReadyMatchesDigest(params: JobReadyMatchesDigestEmailPayload) {
+    const base = env.FRONTEND_URL.replace(/\/$/, '');
+    const logoUrl =
+      env.EMAIL_LOGO_URL ??
+      'https://placehold.co/140x40/1f5f6b/ffffff/png?text=SkillBridge';
+    const discoveryUrl = `${base}/employer/discovery/candidates`;
+    const name = params.recipientFirstName.trim() || 'there';
+    const label = params.matchCount === 1 ? 'candidate' : 'candidates';
+    const verb = params.matchCount === 1 ? 'matches' : 'match';
+    const summaryLine = `${params.matchCount} new Job Ready ${label} ${verb} your saved hiring preferences this week.`;
+
+    const vars: Record<string, string> = {
+      name,
+      matchCount: String(params.matchCount),
+      matchCountSuffix: params.matchCount === 1 ? '' : 'es',
+      summaryLine,
+      discoveryUrl,
+      logoUrl,
+      supportEmail: env.SUPPORT_EMAIL,
+      unsubscribeUrl: `${base}/email-preferences`,
+      year: String(new Date().getFullYear()),
+    };
+
+    const rawHtml = loadMailTemplateFile('job-ready-matches-digest.html');
+    const html = substituteMailTemplate(rawHtml, vars);
+    const text =
+      `Hi ${name},\n\n` +
+      `${summaryLine}\n\n` +
+      `Browse matching candidates: ${discoveryUrl}\n`;
+
+    return this.send({
+      to: params.to,
+      subject: 'New Job Ready candidates match your hiring preferences',
+      text,
+      html,
+    });
+  }
+
+  async sendBankExhaustedAlert(
+    params: BankExhaustedAlertPayload & { to: string | string[] },
+  ) {
+    const assessmentLabel =
+      params.assessmentType === 'skill' ? 'Skill' : 'Advanced';
+    const subject = `[SkillBridge] Question bank exhausted — ${assessmentLabel} assessment`;
+    const lines = [
+      'A candidate session could not start because the question bank is insufficient.',
+      '',
+      `Assessment: ${assessmentLabel}`,
+      `Detail: ${params.detail}`,
+      params.talentProfileId
+        ? `Talent profile ID: ${params.talentProfileId}`
+        : null,
+      params.userId ? `User ID: ${params.userId}` : null,
+      params.track ? `Track: ${params.track}` : null,
+      params.verifiedLevel ? `Verified level: ${params.verifiedLevel}` : null,
+      params.expectedQuestions !== undefined
+        ? `Expected questions: ${params.expectedQuestions}`
+        : null,
+      params.gotQuestions !== undefined
+        ? `Got questions: ${params.gotQuestions}`
+        : null,
+      '',
+      'Please review and replenish the live question bank for this track/level.',
+    ].filter((line): line is string => line !== null);
+
+    const text = lines.join('\n');
+    const html = lines.map((line) => `<p>${line || '&nbsp;'}</p>`).join('');
+
+    return this.send({
+      to: params.to,
+      subject,
       text,
       html,
     });

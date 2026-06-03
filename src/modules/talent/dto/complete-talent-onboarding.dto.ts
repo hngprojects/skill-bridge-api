@@ -1,18 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { TALENT_ROLE_TRACKS } from '../talent.constants';
 
 export class CompleteTalentOnboardingDto {
-  @ApiProperty({ example: 'frontend' })
+  @ApiProperty({ example: 'frontend_developer' })
   @IsString()
-  @MinLength(2)
-  @MaxLength(50)
-  @Matches(/\S/, { message: 'roleTrack must not be empty' })
+  @IsIn(TALENT_ROLE_TRACKS, {
+    message: `roleTrack must be one of: ${TALENT_ROLE_TRACKS.join(', ')}`,
+  })
   roleTrack: string;
 
   @ApiPropertyOptional({
