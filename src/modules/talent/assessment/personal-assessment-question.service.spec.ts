@@ -264,8 +264,10 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
           async (work: (manager: { save: jest.Mock }) => Promise<unknown>) =>
             work({
               save: jest.fn(
-                async (_entity: unknown, rows: Array<Record<string, unknown>>) =>
-                  questionRepo.save(rows),
+                async (
+                  _entity: unknown,
+                  rows: Array<Record<string, unknown>>,
+                ) => questionRepo.save(rows),
               ),
             }),
         ),
@@ -277,7 +279,8 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
     id: 'PA-GEN-WST-001',
     section: 'work_style',
     track: 'all',
-    question: 'How has most of your professional work been physically structured?',
+    question:
+      'How has most of your professional work been physically structured?',
     fieldName: 'work_arrangement',
     format: 'single_select' as const,
     required: true,
@@ -290,9 +293,11 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
   it('inserts new questions and reloads the catalog', async () => {
     const savedRows: Array<Record<string, unknown>> = [];
     const questionRepo = {
-      find: jest.fn().mockImplementation(async () =>
-        savedRows.filter((row) => row.is_live !== false),
-      ),
+      find: jest
+        .fn()
+        .mockImplementation(async () =>
+          savedRows.filter((row) => row.is_live !== false),
+        ),
       create: jest.fn().mockImplementation((data: Record<string, unknown>) => ({
         ...data,
       })),
@@ -388,20 +393,22 @@ describe('PersonalAssessmentQuestionService.importQuestions', () => {
       },
     ];
     const questionRepo = {
-      find: jest.fn().mockImplementation(async (options?: { where?: unknown }) => {
-        if (Array.isArray(options?.where)) {
-          return savedRows.filter((row) => row.id === sampleQuestion.id);
-        }
-        if (
-          options &&
-          typeof options.where === 'object' &&
-          options.where &&
-          'field_name' in options.where
-        ) {
+      find: jest
+        .fn()
+        .mockImplementation(async (options?: { where?: unknown }) => {
+          if (Array.isArray(options?.where)) {
+            return savedRows.filter((row) => row.id === sampleQuestion.id);
+          }
+          if (
+            options &&
+            typeof options.where === 'object' &&
+            options.where &&
+            'field_name' in options.where
+          ) {
+            return savedRows;
+          }
           return savedRows;
-        }
-        return savedRows;
-      }),
+        }),
       create: jest.fn().mockImplementation((data: Record<string, unknown>) => ({
         ...data,
       })),

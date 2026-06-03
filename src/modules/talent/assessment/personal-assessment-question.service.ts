@@ -315,7 +315,10 @@ export class PersonalAssessmentQuestionService
     const existingById = new Map<string, PersonalAssessmentQuestionEntity>(
       existingRows.map((row) => [row.id, row]),
     );
-    const existingByFieldTrack = new Map<string, PersonalAssessmentQuestionEntity>(
+    const existingByFieldTrack = new Map<
+      string,
+      PersonalAssessmentQuestionEntity
+    >(
       existingRows.map((row) => [
         `${row.field_name}|${normalizeTrack(row.track)}`,
         row,

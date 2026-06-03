@@ -61,7 +61,10 @@ export class PersonalAssessmentQuestionImportItemDto {
   @MaxLength(100)
   fieldName: string;
 
-  @ApiProperty({ example: 'single_select', enum: PERSONAL_ASSESSMENT_IMPORT_FORMATS })
+  @ApiProperty({
+    example: 'single_select',
+    enum: PERSONAL_ASSESSMENT_IMPORT_FORMATS,
+  })
   @IsIn([...PERSONAL_ASSESSMENT_IMPORT_FORMATS])
   format: (typeof PERSONAL_ASSESSMENT_IMPORT_FORMATS)[number];
 
