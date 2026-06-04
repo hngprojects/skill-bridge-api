@@ -137,16 +137,7 @@ export class AiResourcesService {
         `Cache miss but inline generation in-flight for: track=${trackKey} level=${level}. Awaiting existing promise...`,
       );
       const generatedRecord = await existingLock.promise;
-      const clone = { ...generatedRecord };
-      clone.resources = this.getRandomSubset(
-        clone.resources,
-        AI_RESOURCE_CONSTANTS.RANDOM_RESOURCE_RETURN_COUNT,
-      );
-      clone.videos = this.getRandomSubset(
-        clone.videos,
-        AI_RESOURCE_CONSTANTS.RANDOM_VIDEO_RETURN_COUNT,
-      );
-      return clone;
+      return this.returnSubset(generatedRecord);
     }
 
     if (existingLock?.isBackground) {
@@ -166,16 +157,7 @@ export class AiResourcesService {
           inlineDeadline,
         ]);
         clearTimeout(timeoutId!);
-        const clone = { ...generatedRecord };
-        clone.resources = this.getRandomSubset(
-          clone.resources,
-          AI_RESOURCE_CONSTANTS.RANDOM_RESOURCE_RETURN_COUNT,
-        );
-        clone.videos = this.getRandomSubset(
-          clone.videos,
-          AI_RESOURCE_CONSTANTS.RANDOM_VIDEO_RETURN_COUNT,
-        );
-        return clone;
+        return this.returnSubset(generatedRecord);
       } catch (err) {
         if (err instanceof Error && err.message === 'inline_timeout') {
           this.logger.warn(
@@ -206,16 +188,7 @@ export class AiResourcesService {
 
     try {
       const savedRecord = await generationPromise;
-      const clone = { ...savedRecord };
-      clone.resources = this.getRandomSubset(
-        clone.resources,
-        AI_RESOURCE_CONSTANTS.RANDOM_RESOURCE_RETURN_COUNT,
-      );
-      clone.videos = this.getRandomSubset(
-        clone.videos,
-        AI_RESOURCE_CONSTANTS.RANDOM_VIDEO_RETURN_COUNT,
-      );
-      return clone;
+      return this.returnSubset(savedRecord);
     } finally {
       if (this.generationLocks.get(cacheKey) === localLock) {
         this.generationLocks.delete(cacheKey);
@@ -264,14 +237,32 @@ export class AiResourcesService {
       throw error;
     }
 
-    // Resolve URLs in the background — don't block the response
+    // Fire off background resolution for the FULL pool so subsequent cache hits have good URLs
     this.resolveUrlsInBackground(saved.id, generated);
 
     return saved;
   }
 
   /**
-   * Resolves placeholder URLs via external APIs and updates the DB record.
+   * Pick a random subset from the saved record and return immediately.
+   * URLs may still be LLM-guessed on the very first call; background
+   * resolution updates the DB so subsequent cache hits have real URLs.
+   */
+  private returnSubset(record: AiLearningResource): AiLearningResource {
+    const clone = { ...record };
+    clone.resources = this.getRandomSubset(
+      record.resources,
+      AI_RESOURCE_CONSTANTS.RANDOM_RESOURCE_RETURN_COUNT,
+    );
+    clone.videos = this.getRandomSubset(
+      record.videos,
+      AI_RESOURCE_CONSTANTS.RANDOM_VIDEO_RETURN_COUNT,
+    );
+    return clone;
+  }
+
+  /**
+   * Resolves placeholder URLs for the full pool via external APIs and updates the DB record.
    * Runs fire-and-forget so the user gets resources instantly.
    */
   private resolveUrlsInBackground(
