@@ -327,6 +327,87 @@ export class OffersService {
     return offer;
   }
 
+  async bulkCreateOffers(
+    employerUserId: string,
+    dto: BulkCreateOffersDto,
+  ): Promise<BulkCreateOffersResult> {
+    const offers: Offer[] = [];
+    const failures: BulkCreateOffersResult['failures'] = [];
+    const { candidateUserIds, ...offerDetails } = dto;
+
+    for (const candidateUserId of candidateUserIds) {
+      try {
+        const offer = await this.createOffer(employerUserId, {
+          ...offerDetails,
+          candidateUserId,
+        });
+        offers.push(offer);
+      } catch (error: unknown) {
+        failures.push({
+          candidateUserId,
+          message:
+            error instanceof Error ? error.message : 'Offer could not be sent',
+        });
+      }
+    }
+
+    return { offers, failures };
+  }
+
+  private resolveOfferDetails(
+    dto: CreateOfferDto,
+    role: EmployerRole | null,
+  ): {
+    roleTitle: string;
+    roleDescription: string | null;
+    compensation: string;
+    employmentType: string;
+    workArrangement: string;
+  } {
+    const roleTitle = dto.roleTitle?.trim() || role?.title?.trim();
+    const compensation =
+      dto.compensation?.trim() || this.formatRoleCompensation(role);
+    const employmentType = dto.employmentType ?? role?.employment_type ?? null;
+    const workArrangement =
+      dto.workArrangement ?? role?.work_arrangement ?? null;
+
+    if (!roleTitle) {
+      throw new BadRequestError('roleTitle is required');
+    }
+    if (!compensation) {
+      throw new BadRequestError('compensation is required');
+    }
+    if (!employmentType) {
+      throw new BadRequestError('employmentType is required');
+    }
+    if (!workArrangement) {
+      throw new BadRequestError('workArrangement is required');
+    }
+
+    return {
+      roleTitle,
+      roleDescription: dto.roleDescription?.trim() || role?.description || null,
+      compensation,
+      employmentType,
+      workArrangement,
+    };
+  }
+
+  private formatRoleCompensation(role: EmployerRole | null): string | null {
+    if (!role || (role.salary_min == null && role.salary_max == null)) {
+      return null;
+    }
+
+    const currency = role.currency ? `${role.currency} ` : '';
+    if (role.salary_min != null && role.salary_max != null) {
+      return `${currency}${role.salary_min}-${role.salary_max}`;
+    }
+    if (role.salary_min != null) {
+      return `${currency}${role.salary_min}+`;
+    }
+    return `${currency}${role.salary_max}`;
+  }
+
   async listEmployerOffers(
     employerUserId: string,
     query: ListOffersQueryDto,
