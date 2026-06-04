@@ -185,6 +185,7 @@ export class OffersService {
     @Inject(NotificationDispatchService)
     private readonly notificationDispatch: OffersNotificationPort,
     private readonly verificationService: EmployerVerificationService,
+    private readonly employerRolesService: EmployerRolesService,
   ) {
     this.monthlyCap =
       parseInt(process.env.OFFERS_MONTHLY_CAP ?? '', 10) || DEFAULT_MONTHLY_CAP;
