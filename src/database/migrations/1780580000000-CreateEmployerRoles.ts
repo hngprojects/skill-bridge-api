@@ -2,6 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class CreateEmployerRoles1780580000000 implements MigrationInterface {
   name = 'CreateEmployerRoles1780580000000';
+  public transaction = false;
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
@@ -16,6 +17,7 @@ export class CreateEmployerRoles1780580000000 implements MigrationInterface {
         "category" varchar(255) NOT NULL,
         "description" text,
         "employment_type" varchar(50),
+        "work_arrangement" varchar(50),
         "education" varchar(100),
         "keywords" text[],
         "salary_min" integer,
@@ -40,9 +42,7 @@ export class CreateEmployerRoles1780580000000 implements MigrationInterface {
     );
 
     // Add role_id column to offers table
-    await queryRunner.query(
-      `ALTER TABLE "offers" ADD COLUMN "role_id" uuid`,
-    );
+    await queryRunner.query(`ALTER TABLE "offers" ADD COLUMN "role_id" uuid`);
     await queryRunner.query(
       `ALTER TABLE "offers" ADD CONSTRAINT "FK_offers_role" FOREIGN KEY ("role_id") REFERENCES "employer_roles"("id") ON DELETE SET NULL`,
     );
@@ -62,18 +62,53 @@ export class CreateEmployerRoles1780580000000 implements MigrationInterface {
     );
 
     // Expand offer_status_enum with new lifecycle states
-    await queryRunner.query(`ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'assessment_unlocked'`);
-    await queryRunner.query(`ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'assessment_completed'`);
-    await queryRunner.query(`ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'passed'`);
-    await queryRunner.query(`ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'failed'`);
-    await queryRunner.query(`ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'withdrawn'`);
+    await queryRunner.query(
+      `ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'assessment_unlocked'`,
+    );
+    await queryRunner.query(
+      `ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'assessment_completed'`,
+    );
+    await queryRunner.query(
+      `ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'passed'`,
+    );
+    await queryRunner.query(
+      `ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'failed'`,
+    );
+    await queryRunner.query(
+      `ALTER TYPE "offer_status_enum" ADD VALUE IF NOT EXISTS 'withdrawn'`,
+    );
+
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "UQ_offers_active_employer_candidate"`,
+    );
+    await queryRunner.query(`
+      CREATE UNIQUE INDEX "UQ_offers_active_employer_candidate"
+      ON "offers" ("employer_user_id", "candidate_user_id")
+      WHERE "status" IN ('pending', 'assessment_unlocked', 'assessment_completed', 'passed', 'accepted');
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "offers" DROP COLUMN IF EXISTS "extension_used"`);
-    await queryRunner.query(`ALTER TABLE "offers" DROP COLUMN IF EXISTS "assessment_deadline"`);
-    await queryRunner.query(`ALTER TABLE "offers" DROP COLUMN IF EXISTS "assessment_unlocked_at"`);
-    await queryRunner.query(`ALTER TABLE "offers" DROP CONSTRAINT IF EXISTS "FK_offers_role"`);
+    await queryRunner.query(
+      `DROP INDEX IF EXISTS "UQ_offers_active_employer_candidate"`,
+    );
+    await queryRunner.query(`
+      CREATE UNIQUE INDEX "UQ_offers_active_employer_candidate"
+      ON "offers" ("employer_user_id", "candidate_user_id")
+      WHERE "status" IN ('pending', 'accepted');
+    `);
+    await queryRunner.query(
+      `ALTER TABLE "offers" DROP COLUMN IF EXISTS "extension_used"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "offers" DROP COLUMN IF EXISTS "assessment_deadline"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "offers" DROP COLUMN IF EXISTS "assessment_unlocked_at"`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE "offers" DROP CONSTRAINT IF EXISTS "FK_offers_role"`,
+    );
     await queryRunner.query(`DROP INDEX IF EXISTS "IDX_offers_role"`);
     await queryRunner.query(`ALTER TABLE "offers" DROP COLUMN IF EXISTS "role_id"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "employer_roles"`);
