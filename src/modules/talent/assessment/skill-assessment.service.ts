@@ -795,11 +795,13 @@ export class SkillAssessmentService {
 
     // Warm resource cache for the validated level on pass
     if (!failed && validatedLevel && profile.track) {
-      this.aiResourcesService.warmCache(profile.track, validatedLevel).catch((err) => {
-        this.logger.error(
-          `Resource cache warming after skill assessment failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
-        );
-      });
+      this.aiResourcesService
+        .warmCache(profile.track, validatedLevel)
+        .catch((err) => {
+          this.logger.error(
+            `Resource cache warming after skill assessment failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          );
+        });
     }
 
     const attemptNumber = await this.resolveSkillAttemptNumber(
