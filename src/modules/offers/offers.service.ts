@@ -23,6 +23,8 @@ import type {
 } from '../notifications/notification-dispatch.service';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { EmployerVerificationService } from '../employer/employer-verification.service';
+import { EmployerRolesService } from '../employer-roles/employer-roles.service';
+import { EmployerRole } from '../employer-roles/entities/employer-role.entity';
 
 /** Narrow port so offers module does not depend on dispatch overload resolution in ESLint. */
 type OffersNotificationPort = {
