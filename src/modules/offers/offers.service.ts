@@ -285,6 +285,15 @@ export class OffersService {
           offer_id: created.id,
         } as Partial<OfferDistributionLog>);
 
+        if (role) {
+          await manager.increment(
+            EmployerRole,
+            { id: role.id, employer_user_id: employerUserId },
+            'offers_sent_count',
+            1,
+          );
+        }
+
         return created;
       })
       .catch((error: unknown) => {
