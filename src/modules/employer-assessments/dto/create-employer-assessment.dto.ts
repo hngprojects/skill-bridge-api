@@ -99,6 +99,18 @@ export class CreateEmployerAssessmentDto {
   @Type(() => EmployerAssessmentQuestionInputDto)
   questions?: EmployerAssessmentQuestionInputDto[];
 
+  @ApiProperty({
+    required: false,
+    format: 'uuid',
+    description: 'Required when questionSource is credlane_bank. Must reference an active CredLane catalogue entry.',
+  })
+  @ValidateIf(
+    (dto: CreateEmployerAssessmentDto) =>
+      dto.questionSource === EmployerAssessmentQuestionSource.CREDLANE_BANK,
+  )
+  @IsUUID('4')
+  credlaneAssessmentId?: string;
+
   @ApiProperty()
   @IsBoolean()
   shareViaLink: boolean;
