@@ -860,6 +860,73 @@ export class OffersService {
     return offer;
   }
 
+  async withdrawOffer(
+    employerUserId: string,
+    offerId: string,
+  ): Promise<{ status: string; message: string }> {
+    const offer = await this.offerRepo.findOne({
+      where: { id: offerId, employer_user_id: employerUserId },
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer not found');
+    }
+
+    if (offer.status !== OfferStatus.PENDING) {
+      throw new BadRequestError('Only pending offers can be withdrawn');
+    }
+
+    await this.offerRepo.update(
+      { id: offer.id, status: OfferStatus.PENDING },
+      { status: OfferStatus.WITHDRAWN },
+    );
+
+    return { status: 'success', message: 'Offer withdrawn' };
+  }
+
+  async extendAssessmentWindow(
+    employerUserId: string,
+    offerId: string,
+  ): Promise<Offer> {
+    const offer = await this.offerRepo.findOne({
+      where: { id: offerId, employer_user_id: employerUserId },
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer not found');
+    }
+    if (offer.status !== OfferStatus.ASSESSMENT_UNLOCKED) {
+      throw new BadRequestError(
+        'Only unlocked assessment offers can be extended',
+      );
+    }
+    if (offer.extension_used) {
+      throw new BadRequestError('Assessment window extension already used');
+    }
+
+    const currentDeadline = offer.assessment_deadline ?? new Date();
+    const nextDeadline = this.addDays(
+      currentDeadline > new Date() ? currentDeadline : new Date(),
+      OFFER_ASSESSMENT_WINDOW_DAYS,
+    );
+
+    const result = await this.offerRepo.update(
+      {
+        id: offer.id,
+        status: OfferStatus.ASSESSMENT_UNLOCKED,
+        extension_used: false,
+      },
+      { assessment_deadline: nextDeadline, extension_used: true },
+    );
+    if (!result.affected || result.affected === 0) {
+      throw new BadRequestError('Assessment window extension already used');
+    }
+
+    offer.assessment_deadline = nextDeadline;
+    offer.extension_used = true;
+    return offer;
+  }
+
   private async getDistributionCount(employerUserId: string): Promise<number> {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
