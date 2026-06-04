@@ -663,7 +663,13 @@ export class OffersService {
     // Now atomically set the response (only if still PENDING)
     const updateResult = await this.offerRepo.update(
       { id: offer.id, status: OfferStatus.PENDING },
-      { status: newStatus, responded_at: respondedAt },
+      {
+        status: newStatus,
+        responded_at: respondedAt,
+        assessment_unlocked_at:
+          newStatus === OfferStatus.ASSESSMENT_UNLOCKED ? respondedAt : null,
+        assessment_deadline: assessmentDeadline,
+      },
     );
 
     if (!updateResult.affected || updateResult.affected === 0) {
