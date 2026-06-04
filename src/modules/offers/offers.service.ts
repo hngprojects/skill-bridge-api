@@ -212,11 +212,20 @@ export class OffersService {
       );
     }
 
+    const role = dto.roleId
+      ? await this.employerRolesService.findActiveRoleForOffer(
+          employerUserId,
+          dto.roleId,
+        )
+      : null;
+
+    const offerDetails = this.resolveOfferDetails(dto, role);
+
     const existingOffer = await this.offerRepo.findOne({
       where: {
         employer_user_id: employerUserId,
         candidate_user_id: dto.candidateUserId,
-        status: In([OfferStatus.PENDING, OfferStatus.ACCEPTED]),
+        status: In([...ACTIVE_OFFER_STATUSES]),
       },
     });
     if (existingOffer) {
