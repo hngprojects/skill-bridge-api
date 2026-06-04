@@ -1,8 +1,6 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class ReplaceThresholdGroupWithLevel1780570000000
-  implements MigrationInterface
-{
+export class ReplaceThresholdGroupWithLevel1780570000000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     // Add new 'level' column
     await queryRunner.query(
@@ -42,6 +40,16 @@ export class ReplaceThresholdGroupWithLevel1780570000000
     // Drop the old enum type
     await queryRunner.query(
       `DROP TYPE IF EXISTS "public"."score_threshold_group_enum"`,
+    );
+
+    // Deduplicate rows that collapsed into the same (track, level)
+    await queryRunner.query(
+      `DELETE FROM "ai_learning_resources" WHERE "id" IN (
+        SELECT "id" FROM (
+          SELECT "id", ROW_NUMBER() OVER (PARTITION BY "track", "level" ORDER BY "id") AS rn
+          FROM "ai_learning_resources"
+        ) sub WHERE rn > 1
+      )`,
     );
 
     // Create new unique index on (track, level)
@@ -86,6 +94,16 @@ export class ReplaceThresholdGroupWithLevel1780570000000
     // Drop the level column
     await queryRunner.query(
       `ALTER TABLE "ai_learning_resources" DROP COLUMN "level"`,
+    );
+
+    // Deduplicate rows that collapsed into the same (track, threshold_group)
+    await queryRunner.query(
+      `DELETE FROM "ai_learning_resources" WHERE "id" IN (
+        SELECT "id" FROM (
+          SELECT "id", ROW_NUMBER() OVER (PARTITION BY "track", "threshold_group" ORDER BY "id") AS rn
+          FROM "ai_learning_resources"
+        ) sub WHERE rn > 1
+      )`,
     );
 
     // Recreate old unique index

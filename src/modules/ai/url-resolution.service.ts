@@ -104,7 +104,8 @@ export class UrlResolutionService {
 
       // Pick the first non-YouTube result
       const link = data.organic?.find(
-        (r) => r.link && !r.link.includes('youtube.com'),
+        (r) =>
+          r.link && !/(?:youtube\.com|youtu\.be|m\.youtube\.com)/i.test(r.link),
       )?.link;
       if (link) {
         return { url: link, resolved: true };
