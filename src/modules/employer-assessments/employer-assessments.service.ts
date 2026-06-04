@@ -46,6 +46,7 @@ import {
   EmployerQuestionType,
 } from './entities/employer-assessment-question.entity';
 import { EmployerAssessmentSubmission } from './entities/employer-assessment-submission.entity';
+import { CredlaneCatalogueAssessment } from './entities/credlane-catalogue-assessment.entity';
 
 const ACTIVE_ASSESSMENT_LIMIT = 5;
 const MIN_COMPANY_QUESTIONS = 5;
@@ -97,6 +98,8 @@ export class EmployerAssessmentsService {
     private readonly employerRoleRepo: Repository<EmployerRole>,
     @InjectRepository(Offer)
     private readonly offerRepo: Repository<Offer>,
+    @InjectRepository(CredlaneCatalogueAssessment)
+    private readonly catalogueRepo: Repository<CredlaneCatalogueAssessment>,
     private readonly notificationDispatch: NotificationDispatchService,
   ) {}
 
@@ -115,6 +118,22 @@ export class EmployerAssessmentsService {
       : [];
     if (new Set(candidateUserIds).size !== candidateUserIds.length) {
       throw new BadRequestError('Candidate list contains duplicate entries');
+    }
+
+    if (dto.questionSource === EmployerAssessmentQuestionSource.CREDLANE_BANK) {
+      if (!dto.credlaneAssessmentId) {
+        throw new BadRequestError(
+          'credlaneAssessmentId is required when questionSource is credlane_bank',
+        );
+      }
+      const catalogueItem = await this.catalogueRepo.findOne({
+        where: { id: dto.credlaneAssessmentId, is_active: true },
+      });
+      if (!catalogueItem) {
+        throw new BadRequestError(
+          'The selected CredLane catalogue assessment was not found or is no longer available',
+        );
+      }
     }
 
     const questions =
@@ -153,6 +172,7 @@ export class EmployerAssessmentsService {
           time_limit_minutes: dto.timeLimitMinutes,
           passing_threshold: dto.passingThreshold,
           question_source: dto.questionSource,
+          credlane_assessment_id: dto.credlaneAssessmentId ?? null,
           share_via_link: dto.shareViaLink,
           send_to_candidates: dto.sendToCandidates,
           share_token: randomBytes(24).toString('hex'),
@@ -212,6 +232,18 @@ export class EmployerAssessmentsService {
           ? 'No assessments yet. Create your first assessment to start screening candidates.'
           : null,
     };
+  }
+
+  async listCredlaneCatalogue(employerUserId: string): Promise<{
+    catalogue: CredlaneCatalogueAssessment[];
+    total: number;
+  }> {
+    await this.ensureVerifiedEmployer(employerUserId);
+    const catalogue = await this.catalogueRepo.find({
+      where: { is_active: true },
+      order: { role_track: 'ASC', experience_level: 'ASC' },
+    });
+    return { catalogue, total: catalogue.length };
   }
 
   async getAssessment(
