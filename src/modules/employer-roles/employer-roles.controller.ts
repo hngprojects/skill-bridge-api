@@ -12,11 +12,18 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../users/entities/user.entity';
 import { EmployerRolesService } from './employer-roles.service';
+import { AttachAssessmentDto } from './dto/attach-assessment.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { EmployerRoleStatus } from './entities/employer-role.entity';
@@ -88,6 +95,27 @@ export class EmployerRolesController {
   ) {
     const role = await this.rolesService.close(userId, roleId);
     return { status: 'success', message: 'Role closed', data: role };
+  }
+
+  @Patch(':roleId/assessment')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Attach an existing assessment to a role' })
+  @UsePipes(new ValidationPipe({ whitelist: true, transform: true }))
+  async attachAssessment(
+    @CurrentUser('sub') userId: string,
+    @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Body() dto: AttachAssessmentDto,
+  ) {
+    const role = await this.rolesService.attachAssessment(
+      userId,
+      roleId,
+      dto.assessmentId,
+    );
+    return {
+      status: 'success',
+      message: 'Assessment attached to role',
+      data: role,
+    };
   }
 
   @Patch(':roleId/reopen')
