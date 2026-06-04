@@ -988,5 +988,17 @@ export class OffersService {
       },
       { status: OfferStatus.EXPIRED },
     );
+    await this.offerRepo.update(
+      {
+        candidate_user_id: candidateUserId,
+        status: OfferStatus.ASSESSMENT_UNLOCKED,
+        assessment_deadline: LessThan(new Date()),
+      },
+      { status: OfferStatus.EXPIRED },
+    );
+  }
+
+  private addDays(date: Date, days: number): Date {
+    return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
   }
 }
