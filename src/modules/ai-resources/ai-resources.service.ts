@@ -8,7 +8,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TalentProfile } from '../talent/entities/talent-profile.entity';
 import { ResourceGenerationService } from '../ai/resource-generation.service';
-import { AiResourcesPayload } from '../ai/ai.types';
 import { AiLearningResource } from './entities/ai-learning-resource.entity';
 import { ErrorMessages } from '../../shared';
 import { AI_RESOURCE_CONSTANTS } from './ai-resources.constants';
@@ -207,18 +206,20 @@ export class AiResourcesService {
       timeoutMs,
     );
 
+    // Resolve URLs inline so no user ever receives guessed/broken links
+    const resolved = await this.resourceGenerationService.resolveUrls(generated);
+
     const newRecord = this.aiLearningResourceRepo.create({
       track: trackKey,
       level,
-      banner_title: generated.banner_title,
-      banner_description: generated.banner_description,
-      resources: generated.resources,
-      videos: generated.videos,
+      banner_title: resolved.banner_title,
+      banner_description: resolved.banner_description,
+      resources: resolved.resources,
+      videos: resolved.videos,
     });
 
-    let saved: AiLearningResource;
     try {
-      saved = await this.aiLearningResourceRepo.save(newRecord);
+      return await this.aiLearningResourceRepo.save(newRecord);
     } catch (error) {
       this.logger.warn(
         `Failed to save generated resources to database due to potential conflict: ${String(
@@ -236,18 +237,9 @@ export class AiResourcesService {
       }
       throw error;
     }
-
-    // Fire off background resolution for the FULL pool so subsequent cache hits have good URLs
-    this.resolveUrlsInBackground(saved.id, generated);
-
-    return saved;
   }
 
-  /**
-   * Pick a random subset from the saved record and return immediately.
-   * URLs may still be LLM-guessed on the very first call; background
-   * resolution updates the DB so subsequent cache hits have real URLs.
-   */
+  /** Pick a random subset from the saved record. */
   private returnSubset(record: AiLearningResource): AiLearningResource {
     const clone = { ...record };
     clone.resources = this.getRandomSubset(
@@ -259,33 +251,6 @@ export class AiResourcesService {
       AI_RESOURCE_CONSTANTS.RANDOM_VIDEO_RETURN_COUNT,
     );
     return clone;
-  }
-
-  /**
-   * Resolves placeholder URLs for the full pool via external APIs and updates the DB record.
-   * Runs fire-and-forget so the user gets resources instantly.
-   */
-  private resolveUrlsInBackground(
-    recordId: string,
-    payload: AiResourcesPayload,
-  ): void {
-    this.resourceGenerationService
-      .resolveUrls(payload)
-      .then(async (resolved) => {
-        await this.aiLearningResourceRepo.update(recordId, {
-          resources: resolved.resources,
-          videos: resolved.videos,
-        });
-        this.logger.log(
-          `Background URL resolution complete for record=${recordId}`,
-        );
-      })
-      .catch((err) => {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Background URL resolution failed for record=${recordId}: ${msg}`,
-        );
-      });
   }
 
   private getRandomSubset<T>(items: T[], count: number): T[] {
