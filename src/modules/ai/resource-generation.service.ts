@@ -28,19 +28,19 @@ export class ResourceGenerationService {
     let focusGuide: string;
     if (level === 'general') {
       focusGuide =
-        'The candidate has not yet completed an assessment. Provide a well-rounded mix of beginner-to-intermediate resources covering fundamentals, best practices, and practical project-building tutorials to help them get started and grow in their track.';
+        'The candidate has not yet completed an assessment. Provide a well-rounded mix of beginner-to-intermediate resources covering fundamentals, best practices, and practical tutorials to help them get started and grow in their track.';
     } else if (level === 'junior') {
       focusGuide =
-        'The candidate is at a junior level. Focus heavily on foundational, beginner-friendly topics, basic setup guides, tutorials, and fundamental concepts to help them build a strong base.';
+        'The candidate is at a junior level. Focus on foundational topics, introductory guides, core concepts, and beginner-friendly tutorials that help them build a strong base in their track.';
     } else if (level === 'mid') {
       focusGuide =
-        'The candidate is at a mid level. Focus on intermediate topics, best practices, common architectures, debugging, and practical project-building tutorials.';
+        'The candidate is at a mid level. Focus on intermediate topics, industry best practices, real-world workflows, problem-solving strategies, and practical project-based learning.';
     } else if (level === 'senior') {
       focusGuide =
-        'The candidate is at a senior level. Focus on advanced topics, system design, performance optimization, advanced patterns, and deep-dive technical resources.';
+        'The candidate is at a senior level. Focus on advanced strategies, leadership in their domain, complex problem-solving, optimization techniques, and deep-dive resources for mastery.';
     } else if (level === 'expert') {
       focusGuide =
-        'The candidate is at an expert level. Focus on cutting-edge topics, distributed systems, architecture at scale, research papers, advanced optimization, and leadership in technical decision-making.';
+        'The candidate is at an expert level. Focus on cutting-edge trends, thought leadership, scaling strategies, cross-functional excellence, and resources that push the boundaries of their field.';
     } else {
       throw new Error(`Unknown level: ${level}`);
     }
