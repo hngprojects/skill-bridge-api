@@ -49,6 +49,10 @@ export class EmployerRole {
   @Column({ type: 'varchar', length: 50, nullable: true })
   employment_type: string | null;
 
+  @ApiPropertyOptional({ example: 'Remote' })
+  @Column({ type: 'varchar', length: 50, nullable: true })
+  work_arrangement: string | null;
+
   @ApiPropertyOptional({ example: 'Bachelor' })
   @Column({ type: 'varchar', length: 100, nullable: true })
   education: string | null;

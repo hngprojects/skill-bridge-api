@@ -3,6 +3,7 @@ import {
   IsArray,
   IsInt,
   IsNotEmpty,
+  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -32,9 +33,13 @@ export class CreateRoleDto {
 
   @ApiPropertyOptional({ enum: ['Full-time', 'Part-time', 'Contract', 'Internship'] })
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @IsIn(['Full-time', 'Part-time', 'Contract', 'Internship'])
   employmentType?: string;
+
+  @ApiPropertyOptional({ enum: ['Remote', 'Hybrid', 'On-site'] })
+  @IsOptional()
+  @IsIn(['Remote', 'Hybrid', 'On-site'])
+  workArrangement?: string;
 
   @ApiPropertyOptional({ example: 'Bachelor' })
   @IsOptional()
