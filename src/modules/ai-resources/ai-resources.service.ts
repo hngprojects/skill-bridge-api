@@ -207,7 +207,8 @@ export class AiResourcesService {
     );
 
     // Resolve URLs inline so no user ever receives guessed/broken links
-    const resolved = await this.resourceGenerationService.resolveUrls(generated);
+    const resolved =
+      await this.resourceGenerationService.resolveUrls(generated);
 
     const newRecord = this.aiLearningResourceRepo.create({
       track: trackKey,
