@@ -44,6 +44,7 @@ type OffersNotificationPort = {
 import { Offer, OfferStatus } from './entities/offer.entity';
 import { OfferDistributionLog } from './entities/offer-distribution-log.entity';
 import { CreateOfferDto } from './dto/create-offer.dto';
+import { BulkCreateOffersDto } from './dto/bulk-create-offers.dto';
 import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 
 const DEFAULT_MONTHLY_CAP = 50;
