@@ -680,6 +680,9 @@ export class OffersService {
 
     offer.status = newStatus;
     offer.responded_at = respondedAt;
+    offer.assessment_unlocked_at =
+      newStatus === OfferStatus.ASSESSMENT_UNLOCKED ? respondedAt : null;
+    offer.assessment_deadline = assessmentDeadline;
 
     // Notify employer
     const candidate = await this.userRepo.findOne({
