@@ -316,7 +316,7 @@ export class OffersService {
         offerId: offer.id,
         employerUserId,
         employerName,
-        roleTitle: dto.roleTitle,
+        roleTitle: offer.role_title,
       });
     } catch (notifyError: unknown) {
       this.logger.error(
