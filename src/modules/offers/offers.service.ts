@@ -99,15 +99,41 @@ export type OfferStatusChangeEvent = {
   candidateUserId: string;
   candidateName: string;
   roleTitle: string;
-  status: OfferStatus.ACCEPTED | OfferStatus.DECLINED;
+  status:
+    | OfferStatus.ACCEPTED
+    | OfferStatus.ASSESSMENT_UNLOCKED
+    | OfferStatus.DECLINED;
   respondedAt: string;
+};
+
+export type BulkCreateOffersResult = {
+  offers: Offer[];
+  failures: Array<{
+    candidateUserId: string;
+    message: string;
+  }>;
 };
 
 const CANDIDATES_OFFERS_SUBTAB_STATUSES = [
   OfferStatus.PENDING,
+  OfferStatus.ASSESSMENT_UNLOCKED,
+  OfferStatus.ASSESSMENT_COMPLETED,
+  OfferStatus.PASSED,
+  OfferStatus.FAILED,
   OfferStatus.DECLINED,
   OfferStatus.EXPIRED,
+  OfferStatus.WITHDRAWN,
 ] as const;
+
+const ACTIVE_OFFER_STATUSES = [
+  OfferStatus.PENDING,
+  OfferStatus.ASSESSMENT_UNLOCKED,
+  OfferStatus.ASSESSMENT_COMPLETED,
+  OfferStatus.PASSED,
+  OfferStatus.ACCEPTED,
+] as const;
+
+const OFFER_ASSESSMENT_WINDOW_DAYS = 5;
 
 type OfferStatusStreamEntry = {
   subject: Subject<OfferStatusChangeEvent>;
