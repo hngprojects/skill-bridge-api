@@ -27,6 +27,7 @@ import {
   ApiGetEmployerAssessment,
   ApiGetPublicAssessment,
   ApiImportAssessmentQuestions,
+  ApiListCredlaneCatalogue,
   ApiListEmployerAssessmentResults,
   ApiListEmployerAssessments,
   ApiSearchAssessmentCandidates,
@@ -117,6 +118,13 @@ export class EmployerAssessmentsController {
   )
   importQuestions(@UploadedFile() file: Express.Multer.File | undefined) {
     return this.employerAssessmentsService.validateUploadedQuestionFile(file);
+  }
+
+  @Get('employer/assessments/credlane-catalogue')
+  @Roles(UserRole.EMPLOYER)
+  @ApiListCredlaneCatalogue()
+  listCredlaneCatalogue(@CurrentUser('sub') employerUserId: string) {
+    return this.employerAssessmentsService.listCredlaneCatalogue(employerUserId);
   }
 
   @Get('employer/assessments/:assessmentId')
