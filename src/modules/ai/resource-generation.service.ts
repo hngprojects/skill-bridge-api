@@ -95,7 +95,18 @@ Rules:
       timeoutMs,
     );
 
-    // Resolve URLs via YouTube Data API and Google Custom Search API
+    this.logger.log(
+      `AI generated ${payload.resources.length} resources and ${payload.videos.length} videos for track=${track} level=${level}`,
+    );
+
+    return payload;
+  }
+
+  /**
+   * Resolve AI-generated placeholder URLs via YouTube Data API and Serper.
+   * Called in the background after the record is saved to DB.
+   */
+  async resolveUrls(payload: AiResourcesPayload): Promise<AiResourcesPayload> {
     this.logger.log(
       `Resolving URLs for ${payload.resources.length} resources and ${payload.videos.length} videos...`,
     );

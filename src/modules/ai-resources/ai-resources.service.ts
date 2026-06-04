@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TalentProfile } from '../talent/entities/talent-profile.entity';
 import { ResourceGenerationService } from '../ai/resource-generation.service';
+import { AiResourcesPayload } from '../ai/ai.types';
 import { AiLearningResource } from './entities/ai-learning-resource.entity';
 import { ErrorMessages } from '../../shared';
 import { AI_RESOURCE_CONSTANTS } from './ai-resources.constants';
@@ -242,8 +243,9 @@ export class AiResourcesService {
       videos: generated.videos,
     });
 
+    let saved: AiLearningResource;
     try {
-      return await this.aiLearningResourceRepo.save(newRecord);
+      saved = await this.aiLearningResourceRepo.save(newRecord);
     } catch (error) {
       this.logger.warn(
         `Failed to save generated resources to database due to potential conflict: ${String(
@@ -261,6 +263,38 @@ export class AiResourcesService {
       }
       throw error;
     }
+
+    // Resolve URLs in the background — don't block the response
+    this.resolveUrlsInBackground(saved.id, generated);
+
+    return saved;
+  }
+
+  /**
+   * Resolves placeholder URLs via external APIs and updates the DB record.
+   * Runs fire-and-forget so the user gets resources instantly.
+   */
+  private resolveUrlsInBackground(
+    recordId: string,
+    payload: AiResourcesPayload,
+  ): void {
+    this.resourceGenerationService
+      .resolveUrls(payload)
+      .then(async (resolved) => {
+        await this.aiLearningResourceRepo.update(recordId, {
+          resources: resolved.resources,
+          videos: resolved.videos,
+        });
+        this.logger.log(
+          `Background URL resolution complete for record=${recordId}`,
+        );
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Background URL resolution failed for record=${recordId}: ${msg}`,
+        );
+      });
   }
 
   private getRandomSubset<T>(items: T[], count: number): T[] {
