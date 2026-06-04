@@ -143,6 +143,7 @@ describe('SkillAssessmentService', () => {
       { generate: jest.fn() } as never,
       { generateQuestions: jest.fn().mockResolvedValue([]) } as never,
       bankExhaustedAlert as never,
+      { warmCache: jest.fn().mockResolvedValue(undefined) } as never,
     );
   });
 

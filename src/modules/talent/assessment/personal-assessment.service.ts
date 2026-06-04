@@ -12,6 +12,7 @@ import { ErrorMessages, SuccessMessages } from '../../../shared';
 import { camelToSnake } from '../../../common/utils/case-transform';
 
 import { OpenRouterService } from '../../ai/openrouter.service';
+import { AiResourcesService } from '../../ai-resources/ai-resources.service';
 import { UsersService } from '../../users/users.service';
 import { TALENT_CLAIMED_LEVELS } from '../talent.constants';
 import { TalentProfile } from '../entities/talent-profile.entity';
@@ -96,6 +97,7 @@ export class PersonalAssessmentService {
     private readonly talentProfileRepository: Repository<TalentProfile>,
     private readonly usersService: UsersService,
     private readonly questionCatalog: PersonalAssessmentQuestionService,
+    private readonly aiResourcesService: AiResourcesService,
     @Optional() private readonly openRouter?: OpenRouterService,
   ) {}
 
@@ -278,7 +280,7 @@ export class PersonalAssessmentService {
     userId: string,
     rawAnswers: Record<string, unknown>,
   ): Promise<{ status: string; message: string; completedAt: string }> {
-    const completedAt = await this.talentProfileRepository.manager.transaction(
+    const { completedAt, track, claimedLevel } = await this.talentProfileRepository.manager.transaction(
       async (manager) => {
         let profile = await manager.findOne(TalentProfile, {
           where: { user_id: userId },
@@ -337,9 +339,22 @@ export class PersonalAssessmentService {
           validated,
         );
 
-        return completedAt;
+        return {
+          completedAt,
+          track: profile.track,
+          claimedLevel: (validated.claimed_level as string) ?? profile.claimed_level,
+        };
       },
     );
+
+    // Warm resource cache for the user's track + claimed level
+    if (track && claimedLevel) {
+      this.aiResourcesService.warmCache(track, claimedLevel).catch((err) => {
+        this.logger.error(
+          `Resource cache warming after personal assessment failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
+        );
+      });
+    }
 
     return {
       status: 'success',

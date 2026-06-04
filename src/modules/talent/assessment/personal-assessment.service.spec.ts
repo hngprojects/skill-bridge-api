@@ -104,6 +104,7 @@ describe('PersonalAssessmentService', () => {
       repository as unknown as Repository<TalentProfile>,
       usersService as UsersService,
       questionCatalog,
+      { warmCache: jest.fn().mockResolvedValue(undefined) } as any,
     );
   });
 
