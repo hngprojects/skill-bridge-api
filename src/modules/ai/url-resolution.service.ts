@@ -26,7 +26,7 @@ export class UrlResolutionService {
       return { url: '', resolved: false };
     }
 
-    const query = encodeURIComponent(`${title} ${description}`.slice(0, 120));
+    const query = encodeURIComponent(`${title} ${description}`);
     const endpoint = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&maxResults=1&key=${apiKey}`;
 
     try {
@@ -78,8 +78,7 @@ export class UrlResolutionService {
       return { url: '', resolved: false };
     }
 
-    const query =
-      `${title} ${description}`.slice(0, 120) + ' -site:youtube.com';
+    const query = `${title} ${description}`;
 
     try {
       const response = await fetch('https://google.serper.dev/search', {
