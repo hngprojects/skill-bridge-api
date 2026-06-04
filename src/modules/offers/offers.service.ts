@@ -632,9 +632,18 @@ export class OffersService {
       );
     }
 
+    const hasRoleAssessment = !!offer.role?.assessment_id;
     const newStatus =
-      responseAction === 'accept' ? OfferStatus.ACCEPTED : OfferStatus.DECLINED;
+      responseAction === 'decline'
+        ? OfferStatus.DECLINED
+        : hasRoleAssessment
+          ? OfferStatus.ASSESSMENT_UNLOCKED
+          : OfferStatus.ACCEPTED;
     const respondedAt = new Date();
+    const assessmentDeadline =
+      newStatus === OfferStatus.ASSESSMENT_UNLOCKED
+        ? this.addDays(respondedAt, OFFER_ASSESSMENT_WINDOW_DAYS)
+        : null;
 
     // Atomic conditional update to prevent race conditions
     const result = await this.offerRepo.update(
