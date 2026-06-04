@@ -967,6 +967,14 @@ export class OffersService {
       },
       { status: OfferStatus.EXPIRED },
     );
+    await this.offerRepo.update(
+      {
+        employer_user_id: employerUserId,
+        status: OfferStatus.ASSESSMENT_UNLOCKED,
+        assessment_deadline: LessThan(new Date()),
+      },
+      { status: OfferStatus.EXPIRED },
+    );
   }
 
   private async expireStaleOffersForCandidate(
