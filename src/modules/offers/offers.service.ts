@@ -619,6 +619,7 @@ export class OffersService {
   ): Promise<Offer> {
     const offer = await this.offerRepo.findOne({
       where: { id: offerId, candidate_user_id: candidateUserId },
+      relations: ['role'],
     });
 
     if (!offer) {
