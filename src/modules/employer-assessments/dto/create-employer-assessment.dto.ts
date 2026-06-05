@@ -109,6 +109,7 @@ export class CreateEmployerAssessmentDto {
     (dto: CreateEmployerAssessmentDto) =>
       dto.questionSource === EmployerAssessmentQuestionSource.CREDLANE_BANK,
   )
+  @IsNotEmpty()
   @IsUUID('4')
   credlaneAssessmentId?: string;
 

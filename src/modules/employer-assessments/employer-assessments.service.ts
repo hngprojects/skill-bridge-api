@@ -121,11 +121,6 @@ export class EmployerAssessmentsService {
     }
 
     if (dto.questionSource === EmployerAssessmentQuestionSource.CREDLANE_BANK) {
-      if (!dto.credlaneAssessmentId) {
-        throw new BadRequestError(
-          'credlaneAssessmentId is required when questionSource is credlane_bank',
-        );
-      }
       const catalogueItem = await this.catalogueRepo.findOne({
         where: { id: dto.credlaneAssessmentId, is_active: true },
       });

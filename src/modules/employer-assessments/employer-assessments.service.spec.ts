@@ -159,6 +159,16 @@ describe('EmployerAssessmentsService', () => {
           is_verified: true,
         }),
       };
+      const saveMock = jest
+        .fn()
+        .mockResolvedValueOnce({
+          id: 'assessment-1',
+          employer_user_id: 'emp-1',
+          title: baseDto.title,
+          share_token: 'abc123',
+          is_active: true,
+        })
+        .mockResolvedValueOnce([]);
       mockAssessmentRepo.manager.transaction.mockImplementation(
         async (cb: (manager: unknown) => Promise<unknown>) => {
           const manager = {
@@ -166,16 +176,7 @@ describe('EmployerAssessmentsService', () => {
               createQueryBuilder: jest.fn().mockReturnValue(lockQueryBuilder),
             }),
             count: jest.fn().mockResolvedValue(0),
-            save: jest
-              .fn()
-              .mockResolvedValueOnce({
-                id: 'assessment-1',
-                employer_user_id: 'emp-1',
-                title: baseDto.title,
-                share_token: 'abc123',
-                is_active: true,
-              })
-              .mockResolvedValueOnce([]),
+            save: saveMock,
           };
           return cb(manager);
         },
@@ -191,6 +192,11 @@ describe('EmployerAssessmentsService', () => {
       expect(lockQueryBuilder.where).toHaveBeenCalledWith('user.id = :userId', {
         userId: 'emp-1',
       });
+      // credlane_assessment_id must be null for COMPANY_QUESTIONS
+      expect(saveMock.mock.calls[0][1]).toHaveProperty(
+        'credlane_assessment_id',
+        null,
+      );
     });
 
     it('should reject when less than 5 company questions are provided', async () => {
@@ -1132,11 +1138,12 @@ describe('EmployerAssessmentsService', () => {
         id: 'emp-1',
         is_verified: true,
       });
+      mockCatalogueRepo.findOne.mockResolvedValue(null);
 
       await expect(
         service.createAssessment('emp-1', credlaneBankDto),
       ).rejects.toThrow(
-        'credlaneAssessmentId is required when questionSource is credlane_bank',
+        'was not found or is no longer available',
       );
     });
 
@@ -1193,6 +1200,73 @@ describe('EmployerAssessmentsService', () => {
           credlaneAssessmentId: '00000000-0000-0000-0000-000000000001',
         }),
       ).rejects.toThrow('does not match the specified role track');
+    });
+
+    it('should create an assessment from credlane_bank with valid catalogue item', async () => {
+      mockUserRepo.findOne.mockResolvedValue({
+        id: 'emp-1',
+        is_verified: true,
+      });
+      mockCatalogueRepo.findOne.mockResolvedValue({
+        id: '00000000-0000-0000-0000-000000000001',
+        role_track: 'backend_developer',
+        experience_level: EmployerAssessmentExperienceLevel.MID,
+        is_active: true,
+      });
+      mockBankQuestionRepo.find.mockResolvedValue(
+        Array.from({ length: 10 }, (_, i) => ({
+          question_text: `Bank Q${i + 1}`,
+          question_type: 'multiple_choice',
+          options: ['A', 'B', 'C', 'D'],
+          correct_answer: 'A',
+          question_number: i + 1,
+        })),
+      );
+      const lockQueryBuilder = {
+        setLock: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({
+          id: 'emp-1',
+          is_verified: true,
+        }),
+      };
+      mockAssessmentRepo.manager.transaction.mockImplementation(
+        async (cb: (manager: unknown) => Promise<unknown>) => {
+          const manager = {
+            getRepository: jest.fn().mockReturnValue({
+              createQueryBuilder: jest.fn().mockReturnValue(lockQueryBuilder),
+            }),
+            count: jest.fn().mockResolvedValue(0),
+            save: jest
+              .fn()
+              .mockResolvedValueOnce({
+                id: 'assessment-2',
+                employer_user_id: 'emp-1',
+                title: credlaneBankDto.title,
+                credlane_assessment_id:
+                  '00000000-0000-0000-0000-000000000001',
+                share_token: 'xyz456',
+                is_active: true,
+              })
+              .mockResolvedValueOnce([]),
+          };
+          return cb(manager);
+        },
+      );
+
+      const result = await service.createAssessment('emp-1', {
+        ...credlaneBankDto,
+        credlaneAssessmentId: '00000000-0000-0000-0000-000000000001',
+      });
+
+      expect(result.id).toBe('assessment-2');
+      expect(mockCatalogueRepo.findOne).toHaveBeenCalledWith({
+        where: {
+          id: '00000000-0000-0000-0000-000000000001',
+          is_active: true,
+        },
+      });
+      expect(mockBankQuestionRepo.find).toHaveBeenCalled();
     });
   });
 });
