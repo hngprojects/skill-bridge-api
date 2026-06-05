@@ -239,7 +239,9 @@ export class NotificationDispatchService
     payload: AssessmentWindowExpiringPayload,
   ): Promise<void>;
   async dispatch(
-    type: NotificationType.ASSESSMENT_PASSED | NotificationType.ASSESSMENT_FAILED,
+    type:
+      | NotificationType.ASSESSMENT_PASSED
+      | NotificationType.ASSESSMENT_FAILED,
     userId: string,
     payload: AssessmentResultPayload,
   ): Promise<void>;
@@ -736,7 +738,9 @@ export class NotificationDispatchService
   }
 
   private async dispatchAssessmentResult(
-    type: NotificationType.ASSESSMENT_PASSED | NotificationType.ASSESSMENT_FAILED,
+    type:
+      | NotificationType.ASSESSMENT_PASSED
+      | NotificationType.ASSESSMENT_FAILED,
     userId: string,
     payload: AssessmentResultPayload,
   ): Promise<void> {

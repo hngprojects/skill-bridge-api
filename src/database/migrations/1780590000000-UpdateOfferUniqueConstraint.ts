@@ -13,9 +13,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * The WHERE clause is also expanded to cover the full set of "active" statuses
  * that were already defined in the entity @Index decorator.
  */
-export class UpdateOfferUniqueConstraint1780590000000
-  implements MigrationInterface
-{
+export class UpdateOfferUniqueConstraint1780590000000 implements MigrationInterface {
   name = 'UpdateOfferUniqueConstraint1780590000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
