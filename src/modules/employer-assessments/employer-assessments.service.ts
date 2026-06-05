@@ -134,6 +134,15 @@ export class EmployerAssessmentsService {
           'The selected CredLane catalogue assessment was not found or is no longer available',
         );
       }
+      // Validate that catalogue item matches the dto role_track and experience_level
+      if (
+        catalogueItem.role_track !== dto.roleTrack.trim() ||
+        catalogueItem.experience_level !== dto.experienceLevel
+      ) {
+        throw new BadRequestError(
+          'The selected catalogue assessment does not match the specified role track and experience level',
+        );
+      }
     }
 
     const questions =
@@ -172,7 +181,10 @@ export class EmployerAssessmentsService {
           time_limit_minutes: dto.timeLimitMinutes,
           passing_threshold: dto.passingThreshold,
           question_source: dto.questionSource,
-          credlane_assessment_id: dto.credlaneAssessmentId ?? null,
+          credlane_assessment_id:
+            dto.questionSource === EmployerAssessmentQuestionSource.CREDLANE_BANK
+              ? dto.credlaneAssessmentId ?? null
+              : null,
           share_via_link: dto.shareViaLink,
           send_to_candidates: dto.sendToCandidates,
           share_token: randomBytes(24).toString('hex'),
@@ -234,16 +246,45 @@ export class EmployerAssessmentsService {
     };
   }
 
-  async listCredlaneCatalogue(employerUserId: string): Promise<{
-    catalogue: CredlaneCatalogueAssessment[];
+  async listCredlaneCatalogue(
+    employerUserId: string,
+    page = 1,
+    limit = 20,
+  ): Promise<{
+    catalogue: {
+      id: string;
+      title: string;
+      description: string | null;
+      estimated_completion_time: string;
+      role_track: string;
+      experience_level: EmployerAssessmentExperienceLevel;
+    }[];
     total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
   }> {
     await this.ensureVerifiedEmployer(employerUserId);
-    const catalogue = await this.catalogueRepo.find({
+    const [entries, total] = await this.catalogueRepo.findAndCount({
       where: { is_active: true },
       order: { role_track: 'ASC', experience_level: 'ASC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
-    return { catalogue, total: catalogue.length };
+    return {
+      catalogue: entries.map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        description: entry.description,
+        estimated_completion_time: entry.estimated_completion_time,
+        role_track: entry.role_track,
+        experience_level: entry.experience_level,
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async getAssessment(
