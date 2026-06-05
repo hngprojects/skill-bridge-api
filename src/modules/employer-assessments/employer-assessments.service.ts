@@ -330,6 +330,7 @@ export class EmployerAssessmentsService {
         candidateUserId,
         assessment.id,
         passed,
+        score,
       );
 
       return submission;
@@ -372,6 +373,7 @@ export class EmployerAssessmentsService {
     candidateUserId: string,
     assessmentId: string,
     passed: boolean,
+    score: number,
   ): Promise<void> {
     const roles = await this.employerRoleRepo.find({
       where: { assessment_id: assessmentId },
@@ -383,16 +385,86 @@ export class EmployerAssessmentsService {
       return;
     }
 
-    await this.offerRepo.update(
-      {
-        candidate_user_id: candidateUserId,
-        role_id: In(roleIds),
-        status: OfferStatus.ASSESSMENT_UNLOCKED,
-      },
-      {
-        status: passed ? OfferStatus.PASSED : OfferStatus.FAILED,
+    // Transition through ASSESSMENT_COMPLETED then immediately to PASSED/FAILED
+    // in the same transaction to provide an auditable intermediate state.
+    const updatedOffers = await this.offerRepo.manager.transaction(
+      async (manager) => {
+        await manager.update(
+          Offer,
+          {
+            candidate_user_id: candidateUserId,
+            role_id: In(roleIds),
+            status: OfferStatus.ASSESSMENT_UNLOCKED,
+          },
+          { status: OfferStatus.ASSESSMENT_COMPLETED },
+        );
+
+        const finalStatus = passed ? OfferStatus.PASSED : OfferStatus.FAILED;
+        await manager.update(
+          Offer,
+          {
+            candidate_user_id: candidateUserId,
+            role_id: In(roleIds),
+            status: OfferStatus.ASSESSMENT_COMPLETED,
+          },
+          { status: finalStatus },
+        );
+
+        return manager.find(Offer, {
+          where: {
+            candidate_user_id: candidateUserId,
+            role_id: In(roleIds),
+            status: finalStatus,
+          },
+          select: ['id', 'employer_user_id', 'candidate_user_id', 'role_title'],
+        });
       },
     );
+
+    // Dispatch notifications for each affected offer
+    const candidate = await this.userRepo.findOne({
+      where: { id: candidateUserId },
+      select: ['id', 'first_name', 'last_name'],
+    });
+    const candidateName = candidate
+      ? `${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim()
+      : 'A candidate';
+
+    for (const offer of updatedOffers) {
+      const resultPayload = {
+        offerId: offer.id,
+        candidateUserId,
+        candidateName,
+        employerUserId: offer.employer_user_id,
+        roleTitle: offer.role_title,
+        score,
+      };
+
+      try {
+        if (passed) {
+          // Notify employer that candidate passed
+          await this.notificationDispatch.notifyAssessmentPassed(
+            offer.employer_user_id,
+            resultPayload,
+          );
+          // Notify candidate they passed
+          await this.notificationDispatch.notifyAssessmentPassed(
+            candidateUserId,
+            resultPayload,
+          );
+        } else {
+          // Notify candidate they did not pass
+          await this.notificationDispatch.notifyAssessmentFailed(
+            candidateUserId,
+            resultPayload,
+          );
+        }
+      } catch (notifyError: unknown) {
+        this.logger.error(
+          `Assessment result notification failed offer=${offer.id}: ${String(notifyError)}`,
+        );
+      }
+    }
   }
 
   async listResults(
