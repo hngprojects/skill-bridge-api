@@ -66,9 +66,12 @@ describe('EmployerAssessmentsService', () => {
     update: jest.fn(),
     find: jest.fn(),
     manager: {
-      transaction: jest.fn().mockImplementation(
-        async (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
-      ),
+      transaction: jest
+        .fn()
+        .mockImplementation(
+          async (cb: (m: typeof mockManager) => Promise<unknown>) =>
+            cb(mockManager),
+        ),
     },
   };
 
@@ -415,7 +418,7 @@ describe('EmployerAssessmentsService', () => {
       });
 
       const result = await service.getPublicAssessmentByToken('token-abc');
-      const question = result.questions[0] as Record<string, unknown>;
+      const question = result.questions[0] as unknown as Record<string, unknown>;
 
       expect(question.question_text).toBe('What is 1+1?');
       expect(question).not.toHaveProperty('correct_answer');
@@ -650,7 +653,7 @@ describe('EmployerAssessmentsService', () => {
         new QueryFailedError(
           'INSERT INTO employer_assessment_submissions',
           [],
-          { code: '23505' },
+          { code: '23505' } as unknown as Error,
         ),
       );
 

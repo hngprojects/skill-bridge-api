@@ -68,10 +68,10 @@ export class OfferExpiryService implements OnModuleInit, OnModuleDestroy {
       .createQueryBuilder()
       .update(Offer)
       .set({ status: OfferStatus.EXPIRED })
-      .where(
-        'status = :status AND assessment_deadline < :now',
-        { status: OfferStatus.ASSESSMENT_UNLOCKED, now },
-      )
+      .where('status = :status AND assessment_deadline < :now', {
+        status: OfferStatus.ASSESSMENT_UNLOCKED,
+        now,
+      })
       .returning(['id', 'employer_user_id', 'candidate_user_id', 'role_title'])
       .execute();
 

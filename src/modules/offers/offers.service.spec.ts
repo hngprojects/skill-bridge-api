@@ -156,12 +156,12 @@ describe('OffersService', () => {
     it('should throw ForbiddenError if employer is not verified', async () => {
       mockVerificationService.assertEmployerVerified.mockRejectedValue(
         new ForbiddenError(
-          'Complete your company profile to access this feature.',
+          'Your employer account is pending verification. You will be notified once approved.',
         ),
       );
 
       await expect(service.createOffer('employer-1', dto)).rejects.toThrow(
-        'Complete your company profile to access this feature.',
+        'Your employer account is pending verification. You will be notified once approved.',
       );
       expect(mockPoolProfileRepo.findOne).not.toHaveBeenCalled();
     });
@@ -376,7 +376,7 @@ describe('OffersService', () => {
         new QueryFailedError('INSERT INTO offers', [], {
           code: '23505',
           constraint: 'UQ_offers_active_employer_candidate',
-        }),
+        } as unknown as Error),
       );
 
       await expect(service.createOffer('employer-1', dto)).rejects.toThrow(
