@@ -7,9 +7,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  EmployerAssessmentExperienceLevel,
-} from './employer-assessment.entity';
+import { EmployerAssessmentExperienceLevel } from './employer-assessment.entity';
 
 @Entity('credlane_catalogue_assessments')
 @Index('IDX_credlane_catalogue_assessments_active', ['is_active'])

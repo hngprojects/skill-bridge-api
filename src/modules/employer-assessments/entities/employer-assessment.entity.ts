@@ -100,7 +100,10 @@ export class EmployerAssessment {
   @Column({ type: 'uuid', nullable: true })
   credlane_assessment_id: string | null;
 
-  @ManyToOne(() => CredlaneCatalogueAssessment, { nullable: true, onDelete: 'SET NULL' })
+  @ManyToOne(() => CredlaneCatalogueAssessment, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
   @JoinColumn({ name: 'credlane_assessment_id' })
   credlane_catalogue_assessment: CredlaneCatalogueAssessment | null;
 

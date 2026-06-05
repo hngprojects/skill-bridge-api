@@ -102,7 +102,8 @@ export class CreateEmployerAssessmentDto {
   @ApiProperty({
     required: false,
     format: 'uuid',
-    description: 'Required when questionSource is credlane_bank. Must reference an active CredLane catalogue entry.',
+    description:
+      'Required when questionSource is credlane_bank. Must reference an active CredLane catalogue entry.',
   })
   @ValidateIf(
     (dto: CreateEmployerAssessmentDto) =>

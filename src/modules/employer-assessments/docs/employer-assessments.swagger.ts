@@ -226,7 +226,9 @@ export const ApiSubmitEmployerAssessment = () =>
 export const ApiListCredlaneCatalogue = () =>
   applyDecorators(
     ApiBearerAuth(),
-    ApiOperation({ summary: 'Browse the CredLane pre-built assessment catalogue' }),
+    ApiOperation({
+      summary: 'Browse the CredLane pre-built assessment catalogue',
+    }),
     ApiResponse({
       status: 200,
       description: 'Catalogue entries returned',
