@@ -701,7 +701,7 @@ export class NotificationDispatchService
       userId,
       type: NotificationType.ASSESSMENT_UNLOCKED,
       title: 'Assessment window opened',
-      body: `You have 5 days to complete the assessment for ${payload.roleTitle}. Deadline: ${new Date(payload.assessmentDeadline).toLocaleDateString()}.`,
+      body: `You have 5 days to complete the assessment for ${payload.roleTitle}. Deadline: ${new Date(payload.assessmentDeadline).toLocaleDateString('en-US', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' })}.`,
       data: {
         offerId: payload.offerId,
         employerUserId: payload.employerUserId,
