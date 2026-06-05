@@ -34,6 +34,7 @@ import {
   ApiSubmitEmployerAssessment,
 } from './docs/employer-assessments.swagger';
 import { CreateEmployerAssessmentDto } from './dto/create-employer-assessment.dto';
+import { ListCredlaneCatalogueQueryDto } from './dto/list-credlane-catalogue-query.dto';
 import { ListEmployerAssessmentResultsQueryDto } from './dto/list-employer-assessment-results-query.dto';
 import { SearchAssessmentCandidatesQueryDto } from './dto/search-assessment-candidates-query.dto';
 import { SubmitEmployerAssessmentDto } from './dto/submit-employer-assessment.dto';
@@ -123,8 +124,15 @@ export class EmployerAssessmentsController {
   @Get('employer/assessments/credlane-catalogue')
   @Roles(UserRole.EMPLOYER)
   @ApiListCredlaneCatalogue()
-  listCredlaneCatalogue(@CurrentUser('sub') employerUserId: string) {
-    return this.employerAssessmentsService.listCredlaneCatalogue(employerUserId);
+  listCredlaneCatalogue(
+    @CurrentUser('sub') employerUserId: string,
+    @Query() query: ListCredlaneCatalogueQueryDto,
+  ) {
+    return this.employerAssessmentsService.listCredlaneCatalogue(
+      employerUserId,
+      query.page,
+      query.limit,
+    );
   }
 
   @Get('employer/assessments/:assessmentId')
