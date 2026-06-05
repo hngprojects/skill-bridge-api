@@ -16,6 +16,7 @@ import {
   EmployerAssessmentInvite,
 } from './entities/employer-assessment-invite.entity';
 import { EmployerAssessmentSubmission } from './entities/employer-assessment-submission.entity';
+import { CredlaneCatalogueAssessment } from './entities/credlane-catalogue-assessment.entity';
 import { AssessmentQuestion } from '../assessments/entities/assessment-question.entity';
 import { EmployerSavedCandidate } from '../employer-discovery/entities/employer-saved-candidate.entity';
 import { User } from '../users/entities/user.entity';
@@ -53,6 +54,11 @@ describe('EmployerAssessmentsService', () => {
 
   const mockNotificationDispatch = { dispatch: jest.fn() };
 
+  const mockCatalogueRepo = {
+    findOne: jest.fn(),
+    findAndCount: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -88,6 +94,10 @@ describe('EmployerAssessmentsService', () => {
         {
           provide: NotificationDispatchService,
           useValue: mockNotificationDispatch,
+        },
+        {
+          provide: getRepositoryToken(CredlaneCatalogueAssessment),
+          useValue: mockCatalogueRepo,
         },
       ],
     }).compile();
@@ -968,6 +978,144 @@ describe('EmployerAssessmentsService', () => {
       expect(resolveFirstSheetPath(workbookXml, relsXml)).toBe(
         'xl/worksheets/sheet1.xml',
       );
+    });
+  });
+
+  // ─── listCredlaneCatalogue ──────────────────────────────────────────────────
+
+  describe('listCredlaneCatalogue', () => {
+    it('should return paginated catalogue entries mapped to DTO shape', async () => {
+      mockUserRepo.findOne.mockResolvedValue({
+        id: 'emp-1',
+        is_verified: true,
+      });
+      const entries = [
+        {
+          id: 'cat-1',
+          title: 'Backend – Junior',
+          description: 'Basics',
+          estimated_completion_time: '20 minutes',
+          role_track: 'backend_developer',
+          experience_level: EmployerAssessmentExperienceLevel.JUNIOR,
+          is_active: true,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ];
+      mockCatalogueRepo.findAndCount.mockResolvedValue([entries, 1]);
+
+      const result = await service.listCredlaneCatalogue('emp-1', 1, 20);
+
+      expect(result.catalogue).toHaveLength(1);
+      expect(result.catalogue[0]).toEqual({
+        id: 'cat-1',
+        title: 'Backend – Junior',
+        description: 'Basics',
+        estimated_completion_time: '20 minutes',
+        role_track: 'backend_developer',
+        experience_level: EmployerAssessmentExperienceLevel.JUNIOR,
+      });
+      // Should not expose internal fields
+      expect(result.catalogue[0]).not.toHaveProperty('is_active');
+      expect(result.catalogue[0]).not.toHaveProperty('created_at');
+      expect(result.total).toBe(1);
+      expect(result.page).toBe(1);
+      expect(result.limit).toBe(20);
+      expect(result.totalPages).toBe(1);
+    });
+
+    it('should reject unverified employers', async () => {
+      mockUserRepo.findOne.mockResolvedValue({
+        id: 'emp-1',
+        is_verified: false,
+      });
+
+      await expect(
+        service.listCredlaneCatalogue('emp-1', 1, 20),
+      ).rejects.toThrow('Only verified employers');
+    });
+  });
+
+  // ─── createAssessment with credlane_bank ────────────────────────────────────
+
+  describe('createAssessment (credlane_bank validation)', () => {
+    const credlaneBankDto = {
+      title: 'Backend Assessment',
+      roleTrack: 'backend_developer',
+      experienceLevel: EmployerAssessmentExperienceLevel.MID,
+      timeLimitMinutes: 30,
+      passingThreshold: 70,
+      questionSource: EmployerAssessmentQuestionSource.CREDLANE_BANK,
+      shareViaLink: true,
+      sendToCandidates: false,
+    };
+
+    it('should reject when credlaneAssessmentId is missing for credlane_bank source', async () => {
+      mockUserRepo.findOne.mockResolvedValue({
+        id: 'emp-1',
+        is_verified: true,
+      });
+
+      await expect(
+        service.createAssessment('emp-1', credlaneBankDto),
+      ).rejects.toThrow(
+        'credlaneAssessmentId is required when questionSource is credlane_bank',
+      );
+    });
+
+    it('should reject when credlaneAssessmentId does not exist in catalogue', async () => {
+      mockUserRepo.findOne.mockResolvedValue({
+        id: 'emp-1',
+        is_verified: true,
+      });
+      mockCatalogueRepo.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.createAssessment('emp-1', {
+          ...credlaneBankDto,
+          credlaneAssessmentId: '00000000-0000-0000-0000-000000000001',
+        }),
+      ).rejects.toThrow('was not found or is no longer available');
+    });
+
+    it('should reject when catalogue item role_track does not match dto', async () => {
+      mockUserRepo.findOne.mockResolvedValue({
+        id: 'emp-1',
+        is_verified: true,
+      });
+      mockCatalogueRepo.findOne.mockResolvedValue({
+        id: '00000000-0000-0000-0000-000000000001',
+        role_track: 'frontend_developer',
+        experience_level: EmployerAssessmentExperienceLevel.MID,
+        is_active: true,
+      });
+
+      await expect(
+        service.createAssessment('emp-1', {
+          ...credlaneBankDto,
+          credlaneAssessmentId: '00000000-0000-0000-0000-000000000001',
+        }),
+      ).rejects.toThrow('does not match the specified role track');
+    });
+
+    it('should reject when catalogue item experience_level does not match dto', async () => {
+      mockUserRepo.findOne.mockResolvedValue({
+        id: 'emp-1',
+        is_verified: true,
+      });
+      mockCatalogueRepo.findOne.mockResolvedValue({
+        id: '00000000-0000-0000-0000-000000000001',
+        role_track: 'backend_developer',
+        experience_level: EmployerAssessmentExperienceLevel.SENIOR,
+        is_active: true,
+      });
+
+      await expect(
+        service.createAssessment('emp-1', {
+          ...credlaneBankDto,
+          credlaneAssessmentId: '00000000-0000-0000-0000-000000000001',
+        }),
+      ).rejects.toThrow('does not match the specified role track');
     });
   });
 });
