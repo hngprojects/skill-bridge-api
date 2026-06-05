@@ -50,10 +50,8 @@ export class OfferExpiryService implements OnModuleInit, OnModuleDestroy {
     }
     this.isRunning = true;
     try {
-      await Promise.all([
-        this.expireAssessmentWindows(),
-        this.sendExpiryWarnings(),
-      ]);
+      await this.expireAssessmentWindows();
+      await this.sendExpiryWarnings();
     } finally {
       this.isRunning = false;
     }
@@ -156,11 +154,14 @@ export class OfferExpiryService implements OnModuleInit, OnModuleDestroy {
 
     for (const offer of expiringOffers) {
       // Mark atomically before dispatching to prevent duplicate warnings on
-      // concurrent poll cycles or simultaneous instances
+      // concurrent poll cycles or simultaneous instances. Include the deadline
+      // window so stale reads from a slow previous cycle cannot mark rows
+      // that have since been extended outside the warning window.
       const marked = await this.offerRepo.update(
         {
           id: offer.id,
           status: OfferStatus.ASSESSMENT_UNLOCKED,
+          assessment_deadline: Between(now, warningCutoff),
           expiry_warning_sent_at: IsNull(),
         },
         { expiry_warning_sent_at: now },

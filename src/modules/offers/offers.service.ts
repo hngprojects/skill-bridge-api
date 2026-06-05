@@ -66,6 +66,8 @@ import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 
 const DEFAULT_MONTHLY_CAP = 50;
 const ACTIVE_OFFER_UNIQUE_INDEX = 'UQ_offers_active_employer_candidate';
+const ACTIVE_OFFER_UNIQUE_INDEX_ROLE = 'UQ_offers_active_employer_candidate_role';
+const ACTIVE_OFFER_UNIQUE_INDEX_NO_ROLE = 'UQ_offers_active_employer_candidate_no_role';
 
 function isActiveOfferUniqueViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -74,7 +76,12 @@ function isActiveOfferUniqueViolation(error: unknown): boolean {
     (error.driverError as { code?: string } | undefined)?.code;
   const constraint = (error.driverError as { constraint?: string } | undefined)
     ?.constraint;
-  return code === '23505' && constraint === ACTIVE_OFFER_UNIQUE_INDEX;
+  return (
+    code === '23505' &&
+    (constraint === ACTIVE_OFFER_UNIQUE_INDEX ||
+      constraint === ACTIVE_OFFER_UNIQUE_INDEX_ROLE ||
+      constraint === ACTIVE_OFFER_UNIQUE_INDEX_NO_ROLE)
+  );
 }
 
 export type OfferListResult = {

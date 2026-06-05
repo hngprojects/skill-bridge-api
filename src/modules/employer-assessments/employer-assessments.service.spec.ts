@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { QueryFailedError } from 'typeorm';
+import { DataSource, QueryFailedError } from 'typeorm';
 import { EmployerAssessmentsService } from './employer-assessments.service';
 import {
   EmployerAssessment,
@@ -60,6 +60,13 @@ describe('EmployerAssessmentsService', () => {
   const mockManager = {
     update: jest.fn(),
     find: jest.fn(),
+    save: jest.fn(),
+  };
+
+  const mockDataSource = {
+    transaction: jest.fn().mockImplementation(
+      async (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
+    ),
   };
 
   const mockOfferRepo = {
@@ -124,6 +131,10 @@ describe('EmployerAssessmentsService', () => {
         {
           provide: NotificationDispatchService,
           useValue: mockNotificationDispatch,
+        },
+        {
+          provide: DataSource,
+          useValue: mockDataSource,
         },
       ],
     }).compile();
@@ -491,16 +502,25 @@ describe('EmployerAssessmentsService', () => {
     it('should compute score server-side and save submission', async () => {
       mockAssessmentRepo.findOne.mockResolvedValue(assessment);
       mockSubmissionRepo.findOne.mockResolvedValue(null);
-      mockSubmissionRepo.save.mockImplementation(async (data: unknown) => ({
-        id: 'sub-1',
-        ...(data as Record<string, unknown>),
-      }));
+      mockManager.save.mockImplementation(
+        async (_entity: unknown, data: unknown) => ({
+          id: 'sub-1',
+          ...(data as Record<string, unknown>),
+        }),
+      );
       mockEmployerRoleRepo.find.mockResolvedValue([
         { id: 'role-1' },
         { id: 'role-2' },
       ]);
+      mockManager.find.mockResolvedValue([
+        {
+          id: 'offer-1',
+          employer_user_id: 'employer-1',
+          candidate_user_id: 'candidate-1',
+          role_title: 'Engineer',
+        },
+      ]);
       mockManager.update.mockResolvedValue({ affected: 1 });
-      mockManager.find.mockResolvedValue([]);
 
       const result = await service.submitAssessment(
         'candidate-1',
@@ -528,21 +548,13 @@ describe('EmployerAssessmentsService', () => {
       expect(mockManager.update).toHaveBeenNthCalledWith(
         1,
         Offer,
-        {
-          candidate_user_id: 'candidate-1',
-          role_id: expect.any(Object),
-          status: OfferStatus.ASSESSMENT_UNLOCKED,
-        },
+        { id: expect.any(Object), status: OfferStatus.ASSESSMENT_UNLOCKED },
         { status: OfferStatus.ASSESSMENT_COMPLETED },
       );
       expect(mockManager.update).toHaveBeenNthCalledWith(
         2,
         Offer,
-        {
-          candidate_user_id: 'candidate-1',
-          role_id: expect.any(Object),
-          status: OfferStatus.ASSESSMENT_COMPLETED,
-        },
+        { id: expect.any(Object), status: OfferStatus.ASSESSMENT_COMPLETED },
         { status: OfferStatus.PASSED },
       );
     });
@@ -550,10 +562,12 @@ describe('EmployerAssessmentsService', () => {
     it('should compute partial score correctly', async () => {
       mockAssessmentRepo.findOne.mockResolvedValue(assessment);
       mockSubmissionRepo.findOne.mockResolvedValue(null);
-      mockSubmissionRepo.save.mockImplementation(async (data: unknown) => ({
-        id: 'sub-1',
-        ...(data as Record<string, unknown>),
-      }));
+      mockManager.save.mockImplementation(
+        async (_entity: unknown, data: unknown) => ({
+          id: 'sub-1',
+          ...(data as Record<string, unknown>),
+        }),
+      );
       mockEmployerRoleRepo.find.mockResolvedValue([]);
 
       const result = await service.submitAssessment(
@@ -584,13 +598,22 @@ describe('EmployerAssessmentsService', () => {
         passing_threshold: 80,
       });
       mockSubmissionRepo.findOne.mockResolvedValue(null);
-      mockSubmissionRepo.save.mockImplementation(async (data: unknown) => ({
-        id: 'sub-1',
-        ...(data as Record<string, unknown>),
-      }));
+      mockManager.save.mockImplementation(
+        async (_entity: unknown, data: unknown) => ({
+          id: 'sub-1',
+          ...(data as Record<string, unknown>),
+        }),
+      );
       mockEmployerRoleRepo.find.mockResolvedValue([{ id: 'role-1' }]);
       mockManager.update.mockResolvedValue({ affected: 1 });
-      mockManager.find.mockResolvedValue([]);
+      mockManager.find.mockResolvedValue([
+        {
+          id: 'offer-1',
+          employer_user_id: 'employer-1',
+          candidate_user_id: 'candidate-1',
+          role_title: 'Engineer',
+        },
+      ]);
 
       const result = await service.submitAssessment(
         'candidate-1',
@@ -612,21 +635,13 @@ describe('EmployerAssessmentsService', () => {
       expect(mockManager.update).toHaveBeenNthCalledWith(
         1,
         Offer,
-        {
-          candidate_user_id: 'candidate-1',
-          role_id: expect.any(Object),
-          status: OfferStatus.ASSESSMENT_UNLOCKED,
-        },
+        { id: expect.any(Object), status: OfferStatus.ASSESSMENT_UNLOCKED },
         { status: OfferStatus.ASSESSMENT_COMPLETED },
       );
       expect(mockManager.update).toHaveBeenNthCalledWith(
         2,
         Offer,
-        {
-          candidate_user_id: 'candidate-1',
-          role_id: expect.any(Object),
-          status: OfferStatus.ASSESSMENT_COMPLETED,
-        },
+        { id: expect.any(Object), status: OfferStatus.ASSESSMENT_COMPLETED },
         { status: OfferStatus.FAILED },
       );
     });
@@ -649,7 +664,7 @@ describe('EmployerAssessmentsService', () => {
     it('should translate concurrent duplicate submissions to ConflictError', async () => {
       mockAssessmentRepo.findOne.mockResolvedValue(assessment);
       mockSubmissionRepo.findOne.mockResolvedValue(null);
-      mockSubmissionRepo.save.mockRejectedValue(
+      mockManager.save.mockRejectedValue(
         new QueryFailedError(
           'INSERT INTO employer_assessment_submissions',
           [],
