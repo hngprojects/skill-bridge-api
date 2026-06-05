@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, IsNull, LessThan, Repository } from 'typeorm';
+import { Between, In, IsNull, Repository } from 'typeorm';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { User } from '../users/entities/user.entity';
 import { Offer, OfferStatus } from './entities/offer.entity';
@@ -17,6 +17,8 @@ const WARNING_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
 export class OfferExpiryService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OfferExpiryService.name);
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  /** Prevents overlapping executions when a poll cycle outlasts the interval. */
+  private isRunning = false;
 
   constructor(
     @InjectRepository(Offer)
@@ -42,57 +44,73 @@ export class OfferExpiryService implements OnModuleInit, OnModuleDestroy {
   }
 
   async processExpiryEvents(): Promise<void> {
-    await Promise.all([
-      this.expireAssessmentWindows(),
-      this.sendExpiryWarnings(),
-    ]);
+    if (this.isRunning) {
+      this.logger.warn('Skipping expiry poll — previous run still in progress');
+      return;
+    }
+    this.isRunning = true;
+    try {
+      await Promise.all([
+        this.expireAssessmentWindows(),
+        this.sendExpiryWarnings(),
+      ]);
+    } finally {
+      this.isRunning = false;
+    }
   }
 
   private async expireAssessmentWindows(): Promise<void> {
     const now = new Date();
 
-    // Fetch ASSESSMENT_UNLOCKED offers whose deadline has passed
-    const overdueOffers = await this.offerRepo.find({
-      where: {
-        status: OfferStatus.ASSESSMENT_UNLOCKED,
-        assessment_deadline: LessThan(now),
-      },
-      select: ['id', 'employer_user_id', 'candidate_user_id', 'role_title'],
+    // Bulk-transition all overdue offers in one statement and retrieve the
+    // affected rows so we can notify without a second round-trip.
+    const overdueOffers = await this.offerRepo
+      .createQueryBuilder()
+      .update(Offer)
+      .set({ status: OfferStatus.EXPIRED })
+      .where(
+        'status = :status AND assessment_deadline < :now',
+        { status: OfferStatus.ASSESSMENT_UNLOCKED, now },
+      )
+      .returning(['id', 'employer_user_id', 'candidate_user_id', 'role_title'])
+      .execute();
+
+    const rows = (overdueOffers.raw ?? []) as Array<{
+      id: string;
+      employer_user_id: string;
+      candidate_user_id: string;
+      role_title: string;
+    }>;
+
+    if (rows.length === 0) return;
+
+    // Batch-load all candidate names in a single query
+    const candidateIds = [...new Set(rows.map((r) => r.candidate_user_id))];
+    const candidates = await this.userRepo.find({
+      where: { id: In(candidateIds) },
+      select: ['id', 'first_name', 'last_name'],
     });
+    const nameById = new Map(
+      candidates.map((c) => [
+        c.id,
+        `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'A candidate',
+      ]),
+    );
 
-    for (const offer of overdueOffers) {
-      const updated = await this.offerRepo.update(
-        { id: offer.id, status: OfferStatus.ASSESSMENT_UNLOCKED },
-        { status: OfferStatus.EXPIRED },
-      );
-
-      if (!updated.affected || updated.affected === 0) {
-        // Another process already transitioned this offer
-        continue;
-      }
-
-      // Notify employer
+    for (const row of rows) {
       try {
-        const candidate = await this.userRepo.findOne({
-          where: { id: offer.candidate_user_id },
-          select: ['id', 'first_name', 'last_name'],
-        });
-        const candidateName = candidate
-          ? `${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim()
-          : 'A candidate';
-
         await this.notificationDispatch.notifyOfferExpired(
-          offer.employer_user_id,
+          row.employer_user_id,
           {
-            offerId: offer.id,
-            candidateUserId: offer.candidate_user_id,
-            candidateName,
-            roleTitle: offer.role_title,
+            offerId: row.id,
+            candidateUserId: row.candidate_user_id,
+            candidateName: nameById.get(row.candidate_user_id) ?? 'A candidate',
+            roleTitle: row.role_title,
           },
         );
       } catch (error: unknown) {
         this.logger.error(
-          `Expiry notification failed offer=${offer.id}: ${String(error)}`,
+          `Expiry notification failed offer=${row.id}: ${String(error)}`,
         );
       }
     }
@@ -119,9 +137,26 @@ export class OfferExpiryService implements OnModuleInit, OnModuleDestroy {
       ],
     });
 
+    if (expiringOffers.length === 0) return;
+
+    // Batch-load all candidate names in a single query
+    const candidateIds = [
+      ...new Set(expiringOffers.map((o) => o.candidate_user_id)),
+    ];
+    const candidates = await this.userRepo.find({
+      where: { id: In(candidateIds) },
+      select: ['id', 'first_name', 'last_name'],
+    });
+    const nameById = new Map(
+      candidates.map((c) => [
+        c.id,
+        `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || 'A candidate',
+      ]),
+    );
+
     for (const offer of expiringOffers) {
-      // Mark the warning as sent atomically before dispatching to prevent
-      // duplicate warnings on concurrent poll cycles
+      // Mark atomically before dispatching to prevent duplicate warnings on
+      // concurrent poll cycles or simultaneous instances
       const marked = await this.offerRepo.update(
         {
           id: offer.id,
@@ -136,20 +171,13 @@ export class OfferExpiryService implements OnModuleInit, OnModuleDestroy {
       }
 
       try {
-        const candidate = await this.userRepo.findOne({
-          where: { id: offer.candidate_user_id },
-          select: ['id', 'first_name', 'last_name'],
-        });
-        const candidateName = candidate
-          ? `${candidate.first_name ?? ''} ${candidate.last_name ?? ''}`.trim()
-          : 'A candidate';
-
         await this.notificationDispatch.notifyAssessmentWindowExpiring(
           offer.employer_user_id,
           {
             offerId: offer.id,
             candidateUserId: offer.candidate_user_id,
-            candidateName,
+            candidateName:
+              nameById.get(offer.candidate_user_id) ?? 'A candidate',
             roleTitle: offer.role_title,
             assessmentDeadline: offer.assessment_deadline!.toISOString(),
           },
