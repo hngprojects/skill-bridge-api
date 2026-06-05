@@ -182,8 +182,9 @@ export class EmployerAssessmentsService {
           passing_threshold: dto.passingThreshold,
           question_source: dto.questionSource,
           credlane_assessment_id:
-            dto.questionSource === EmployerAssessmentQuestionSource.CREDLANE_BANK
-              ? dto.credlaneAssessmentId ?? null
+            dto.questionSource ===
+            EmployerAssessmentQuestionSource.CREDLANE_BANK
+              ? (dto.credlaneAssessmentId ?? null)
               : null,
           share_via_link: dto.shareViaLink,
           send_to_candidates: dto.sendToCandidates,
