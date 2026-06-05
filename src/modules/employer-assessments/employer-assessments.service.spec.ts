@@ -57,11 +57,26 @@ describe('EmployerAssessmentsService', () => {
     find: jest.fn(),
   };
 
-  const mockOfferRepo = {
+  const mockManager = {
     update: jest.fn(),
+    find: jest.fn(),
   };
 
-  const mockNotificationDispatch = { dispatch: jest.fn() };
+  const mockOfferRepo = {
+    update: jest.fn(),
+    find: jest.fn(),
+    manager: {
+      transaction: jest.fn().mockImplementation(
+        async (cb: (m: typeof mockManager) => Promise<unknown>) => cb(mockManager),
+      ),
+    },
+  };
+
+  const mockNotificationDispatch = {
+    dispatch: jest.fn(),
+    notifyAssessmentPassed: jest.fn(),
+    notifyAssessmentFailed: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -481,7 +496,8 @@ describe('EmployerAssessmentsService', () => {
         { id: 'role-1' },
         { id: 'role-2' },
       ]);
-      mockOfferRepo.update.mockResolvedValue({ affected: 1 });
+      mockManager.update.mockResolvedValue({ affected: 1 });
+      mockManager.find.mockResolvedValue([]);
 
       const result = await service.submitAssessment(
         'candidate-1',
@@ -506,11 +522,23 @@ describe('EmployerAssessmentsService', () => {
         where: { assessment_id: 'ass-1' },
         select: ['id'],
       });
-      expect(mockOfferRepo.update).toHaveBeenCalledWith(
+      expect(mockManager.update).toHaveBeenNthCalledWith(
+        1,
+        Offer,
         {
           candidate_user_id: 'candidate-1',
           role_id: expect.any(Object),
           status: OfferStatus.ASSESSMENT_UNLOCKED,
+        },
+        { status: OfferStatus.ASSESSMENT_COMPLETED },
+      );
+      expect(mockManager.update).toHaveBeenNthCalledWith(
+        2,
+        Offer,
+        {
+          candidate_user_id: 'candidate-1',
+          role_id: expect.any(Object),
+          status: OfferStatus.ASSESSMENT_COMPLETED,
         },
         { status: OfferStatus.PASSED },
       );
@@ -544,7 +572,7 @@ describe('EmployerAssessmentsService', () => {
       // 3 out of 5 correct → 60%
       expect(result.score).toBe(60);
       expect(result.passed).toBe(true); // threshold is 60
-      expect(mockOfferRepo.update).not.toHaveBeenCalled();
+      expect(mockManager.update).not.toHaveBeenCalled();
     });
 
     it('should mark linked role offer as failed when candidate fails attached assessment', async () => {
@@ -558,7 +586,8 @@ describe('EmployerAssessmentsService', () => {
         ...(data as Record<string, unknown>),
       }));
       mockEmployerRoleRepo.find.mockResolvedValue([{ id: 'role-1' }]);
-      mockOfferRepo.update.mockResolvedValue({ affected: 1 });
+      mockManager.update.mockResolvedValue({ affected: 1 });
+      mockManager.find.mockResolvedValue([]);
 
       const result = await service.submitAssessment(
         'candidate-1',
@@ -577,11 +606,23 @@ describe('EmployerAssessmentsService', () => {
       );
 
       expect(result.passed).toBe(false);
-      expect(mockOfferRepo.update).toHaveBeenCalledWith(
+      expect(mockManager.update).toHaveBeenNthCalledWith(
+        1,
+        Offer,
         {
           candidate_user_id: 'candidate-1',
           role_id: expect.any(Object),
           status: OfferStatus.ASSESSMENT_UNLOCKED,
+        },
+        { status: OfferStatus.ASSESSMENT_COMPLETED },
+      );
+      expect(mockManager.update).toHaveBeenNthCalledWith(
+        2,
+        Offer,
+        {
+          candidate_user_id: 'candidate-1',
+          role_id: expect.any(Object),
+          status: OfferStatus.ASSESSMENT_COMPLETED,
         },
         { status: OfferStatus.FAILED },
       );
