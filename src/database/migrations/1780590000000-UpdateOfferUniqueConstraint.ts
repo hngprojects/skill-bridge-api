@@ -36,7 +36,7 @@ export class UpdateOfferUniqueConstraint1780590000000 implements MigrationInterf
     await queryRunner.query(`
       CREATE UNIQUE INDEX "UQ_offers_active_employer_candidate"
       ON "offers" ("employer_user_id", "candidate_user_id")
-      WHERE "status" IN ('pending', 'accepted')
+      WHERE "status" IN ('pending', 'assessment_unlocked', 'assessment_completed', 'passed', 'accepted')
     `);
   }
 }

@@ -665,12 +665,14 @@ export class OffersService {
         ? this.addDays(respondedAt, OFFER_ASSESSMENT_WINDOW_DAYS)
         : null;
 
+    const now = new Date();
+
     // Atomic conditional update to prevent race conditions
     const result = await this.offerRepo.update(
       {
         id: offer.id,
         status: OfferStatus.PENDING,
-        expires_at: LessThan(new Date()) as unknown as Date,
+        expires_at: LessThan(now),
       },
       { status: OfferStatus.EXPIRED },
     );
@@ -983,9 +985,10 @@ export class OffersService {
       );
     }
 
-    const currentDeadline = offer.assessment_deadline ?? new Date();
+    const now = new Date();
+    const currentDeadline = offer.assessment_deadline ?? now;
     const nextDeadline = this.addDays(
-      currentDeadline > new Date() ? currentDeadline : new Date(),
+      currentDeadline > now ? currentDeadline : now,
       OFFER_ASSESSMENT_WINDOW_DAYS,
     );
 
@@ -999,6 +1002,10 @@ export class OffersService {
         assessment_deadline: nextDeadline,
         extension_used: true,
         status: OfferStatus.ASSESSMENT_UNLOCKED,
+        // Reset so the expiry-warning service sends a fresh warning for the new window
+        expiry_warning_sent_at: null,
+        // Stamp re-open time when recovering from EXPIRED
+        ...(isRecentlyExpired ? { assessment_unlocked_at: now } : {}),
       },
     );
     if (!result.affected || result.affected === 0) {
@@ -1008,6 +1015,10 @@ export class OffersService {
     offer.assessment_deadline = nextDeadline;
     offer.extension_used = true;
     offer.status = OfferStatus.ASSESSMENT_UNLOCKED;
+    offer.expiry_warning_sent_at = null;
+    if (isRecentlyExpired) {
+      offer.assessment_unlocked_at = now;
+    }
     return offer;
   }
 
