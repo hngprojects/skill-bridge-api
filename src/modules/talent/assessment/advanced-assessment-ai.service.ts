@@ -1,17 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { AssessmentQuestion, QuestionType } from '../../assessments/entities';
+import { resolveQuestionCompetency } from './competency-taxonomy';
 import { TalentPersonalAssessmentContext } from './personal-assessment.service';
 
-// Final question counts (includes runtime-generated LT-3).
-// Composition per spec: 8 MCQ (30% weight) + 2 short-text + 5 long-text (70% weight combined).
+// Final question counts.
+// Composition: 8 MCQ (30% weight) + 2 short-text + 5 long-text (70% weight combined).
 export const ADVANCED_ASSESSMENT_TOTAL_QUESTIONS = 15;
 export const ADVANCED_ASSESSMENT_MCQ_COUNT = 8;
 export const ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT = 2;
 export const ADVANCED_ASSESSMENT_LONG_TEXT_COUNT = 5;
 
-// What's actually served at session start. LT-3 is generated mid-session by
-// POST /session/:id/lt2-submit and appended to the session jsonb at that point.
-export const ADVANCED_ASSESSMENT_BASE_LONG_TEXT_COUNT = 4; // 2 LT-1 + 2 LT-2
+export const ADVANCED_ASSESSMENT_BASE_LONG_TEXT_COUNT = 5; // 2 LT-1 + 3 LT-2
 export const ADVANCED_ASSESSMENT_BASE_QUESTIONS =
   ADVANCED_ASSESSMENT_MCQ_COUNT +
   ADVANCED_ASSESSMENT_SHORT_TEXT_COUNT +
@@ -73,8 +72,7 @@ export class AdvancedAssessmentAiService {
           'short_text',
           ADVANCED_ASSESSMENT_MCQ_COUNT + 1,
         ),
-        // Only LT-1 + LT-2 are served at session start (4 items). LT-3 is
-        // appended to the session jsonb by AdvancedAssessmentService.submitLt2().
+        // All 5 long-text questions served at session start.
         ...this.toBlock(
           questions.longText.slice(0, ADVANCED_ASSESSMENT_BASE_LONG_TEXT_COUNT),
           'long_text',
@@ -92,20 +90,27 @@ export class AdvancedAssessmentAiService {
     startAt: number,
   ): AdvancedAssessmentGeneratedQuestion[] {
     const { min_length, max_length } = blockLengthLimits(block);
-    return questions.map((question, index) => ({
-      question_id: question.id,
-      question_number: startAt + index,
-      block,
-      question_type: question.question_type,
-      question_text: question.question_text,
-      options: question.options,
-      slot_type: question.slot_type,
-      metadata: question.competency
-        ? { ...question.metadata, competency: question.competency }
-        : question.metadata,
-      correct_answer: question.correct_answer,
-      min_length,
-      max_length,
-    }));
+    return questions.map((question, index) => {
+      const competency = resolveQuestionCompetency({
+        competency: question.competency,
+        metadata: question.metadata,
+      });
+
+      return {
+        question_id: question.id,
+        question_number: startAt + index,
+        block,
+        question_type: question.question_type,
+        question_text: question.question_text,
+        options: question.options,
+        slot_type: question.slot_type,
+        metadata: competency
+          ? { ...(question.metadata ?? {}), competency }
+          : question.metadata,
+        correct_answer: question.correct_answer,
+        min_length,
+        max_length,
+      };
+    });
   }
 }

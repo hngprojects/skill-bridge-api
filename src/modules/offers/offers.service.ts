@@ -7,7 +7,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Subject } from 'rxjs';
-import { Between, In, LessThan, QueryFailedError, Repository } from 'typeorm';
+import {
+  Between,
+  In,
+  IsNull,
+  LessThan,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import {
   BadRequestError,
   ConflictError,
@@ -18,11 +25,16 @@ import { EmployerPoolProfile } from '../talent/entities/employer-pool-profile.en
 import { EmployerProfile } from '../employer/entities/employer-profile.entity';
 import { User } from '../users/entities/user.entity';
 import type {
+  AssessmentUnlockedPayload,
+  AssessmentWindowExtendedPayload,
   OfferReceivedPayload,
   OfferRespondedPayload,
+  OfferWithdrawnPayload,
 } from '../notifications/notification-dispatch.service';
 import { NotificationDispatchService } from '../notifications/notification-dispatch.service';
 import { EmployerVerificationService } from '../employer/employer-verification.service';
+import { EmployerRolesService } from '../employer-roles/employer-roles.service';
+import { EmployerRole } from '../employer-roles/entities/employer-role.entity';
 
 /** Narrow port so offers module does not depend on dispatch overload resolution in ESLint. */
 type OffersNotificationPort = {
@@ -38,6 +50,18 @@ type OffersNotificationPort = {
     userId: string,
     payload: OfferRespondedPayload,
   ): Promise<void>;
+  notifyAssessmentUnlocked(
+    userId: string,
+    payload: AssessmentUnlockedPayload,
+  ): Promise<void>;
+  notifyAssessmentWindowExtended(
+    userId: string,
+    payload: AssessmentWindowExtendedPayload,
+  ): Promise<void>;
+  notifyOfferWithdrawn(
+    userId: string,
+    payload: OfferWithdrawnPayload,
+  ): Promise<void>;
 };
 import { Offer, OfferStatus } from './entities/offer.entity';
 import { OfferDistributionLog } from './entities/offer-distribution-log.entity';
@@ -46,6 +70,10 @@ import { ListOffersQueryDto } from './dto/list-offers-query.dto';
 
 const DEFAULT_MONTHLY_CAP = 50;
 const ACTIVE_OFFER_UNIQUE_INDEX = 'UQ_offers_active_employer_candidate';
+const ACTIVE_OFFER_UNIQUE_INDEX_ROLE =
+  'UQ_offers_active_employer_candidate_role';
+const ACTIVE_OFFER_UNIQUE_INDEX_NO_ROLE =
+  'UQ_offers_active_employer_candidate_no_role';
 
 function isActiveOfferUniqueViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -54,7 +82,12 @@ function isActiveOfferUniqueViolation(error: unknown): boolean {
     (error.driverError as { code?: string } | undefined)?.code;
   const constraint = (error.driverError as { constraint?: string } | undefined)
     ?.constraint;
-  return code === '23505' && constraint === ACTIVE_OFFER_UNIQUE_INDEX;
+  return (
+    code === '23505' &&
+    (constraint === ACTIVE_OFFER_UNIQUE_INDEX ||
+      constraint === ACTIVE_OFFER_UNIQUE_INDEX_ROLE ||
+      constraint === ACTIVE_OFFER_UNIQUE_INDEX_NO_ROLE)
+  );
 }
 
 export type OfferListResult = {
@@ -96,15 +129,39 @@ export type OfferStatusChangeEvent = {
   candidateUserId: string;
   candidateName: string;
   roleTitle: string;
-  status: OfferStatus.ACCEPTED | OfferStatus.DECLINED;
+  status:
+    | OfferStatus.ACCEPTED
+    | OfferStatus.ASSESSMENT_UNLOCKED
+    | OfferStatus.DECLINED;
   respondedAt: string;
+};
+
+export type SendOffersResult = {
+  sent_count: number;
+  offers: Offer[];
+  warnings: Array<{ candidateId: string; reason: string }>;
 };
 
 const CANDIDATES_OFFERS_SUBTAB_STATUSES = [
   OfferStatus.PENDING,
+  OfferStatus.ASSESSMENT_UNLOCKED,
+  OfferStatus.ASSESSMENT_COMPLETED,
+  OfferStatus.PASSED,
+  OfferStatus.FAILED,
   OfferStatus.DECLINED,
   OfferStatus.EXPIRED,
+  OfferStatus.WITHDRAWN,
 ] as const;
+
+const ACTIVE_OFFER_STATUSES = [
+  OfferStatus.PENDING,
+  OfferStatus.ASSESSMENT_UNLOCKED,
+  OfferStatus.ASSESSMENT_COMPLETED,
+  OfferStatus.PASSED,
+  OfferStatus.ACCEPTED,
+] as const;
+
+const OFFER_ASSESSMENT_WINDOW_DAYS = 5;
 
 type OfferStatusStreamEntry = {
   subject: Subject<OfferStatusChangeEvent>;
@@ -156,20 +213,108 @@ export class OffersService {
     @Inject(NotificationDispatchService)
     private readonly notificationDispatch: OffersNotificationPort,
     private readonly verificationService: EmployerVerificationService,
+    private readonly employerRolesService: EmployerRolesService,
   ) {
     this.monthlyCap =
       parseInt(process.env.OFFERS_MONTHLY_CAP ?? '', 10) || DEFAULT_MONTHLY_CAP;
   }
 
-  async createOffer(
+  async sendOffers(
     employerUserId: string,
     dto: CreateOfferDto,
-  ): Promise<Offer> {
+  ): Promise<SendOffersResult> {
+    // Invariant checks: fail the whole request (not per-candidate warnings)
     await this.verificationService.assertEmployerVerified(employerUserId);
+    const role = await this.employerRolesService.findActiveRoleForOffer(
+      employerUserId,
+      dto.roleId,
+    );
+
+    const uniqueIds = [...new Set(dto.candidateIds)];
+    const sentOffers: Offer[] = [];
+    const warnings: SendOffersResult['warnings'] = [];
+
+    for (const candidateUserId of uniqueIds) {
+      try {
+        const offer = await this.createSingleOffer(
+          employerUserId,
+          candidateUserId,
+          dto,
+          role,
+        );
+        sentOffers.push(offer);
+      } catch (err: unknown) {
+        warnings.push({
+          candidateId: candidateUserId,
+          reason:
+            err instanceof Error ? err.message : 'Offer could not be sent',
+        });
+      }
+    }
+
+    return { sent_count: sentOffers.length, offers: sentOffers, warnings };
+  }
+
+  /** Public alias for backward-compat — accepts old single-candidate dto shape */
+  async createOffer(
+    employerUserId: string,
+    dto: Omit<CreateOfferDto, 'candidateIds'> & { candidateUserId: string },
+  ): Promise<Offer> {
+    const { candidateUserId, ...rest } = dto;
+    return this.createSingleOffer(employerUserId, candidateUserId, rest);
+  }
+
+  /** Public alias for backward-compat — accepts old bulk dto shape */
+  async bulkCreateOffers(
+    employerUserId: string,
+    dto: {
+      candidateUserIds: string[];
+      roleId: string;
+      message: string;
+      expiresInDays?: number;
+    },
+  ): Promise<{
+    offers: Offer[];
+    failures: Array<{ candidateUserId: string; message: string }>;
+  }> {
+    const offers: Offer[] = [];
+    const failures: Array<{ candidateUserId: string; message: string }> = [];
+
+    for (const candidateUserId of dto.candidateUserIds) {
+      try {
+        const offer = await this.createOffer(employerUserId, {
+          candidateUserId,
+          roleId: dto.roleId,
+          message: dto.message,
+          expiresInDays: dto.expiresInDays,
+        });
+        offers.push(offer);
+      } catch (err: unknown) {
+        failures.push({
+          candidateUserId,
+          message:
+            err instanceof Error ? err.message : 'Offer could not be sent',
+        });
+      }
+    }
+
+    return { offers, failures };
+  }
+
+  private async createSingleOffer(
+    employerUserId: string,
+    candidateUserId: string,
+    dto: Omit<CreateOfferDto, 'candidateIds'>,
+    preResolvedRole?: EmployerRole | null,
+  ): Promise<Offer> {
+    // Skip invariant checks when called from sendOffers (already validated once)
+    if (preResolvedRole === undefined) {
+      await this.verificationService.assertEmployerVerified(employerUserId);
+    }
 
     // Validate candidate is Job Ready
     const poolProfile = await this.poolProfileRepo.findOne({
-      where: { candidate_id: dto.candidateUserId },
+      where: { candidate_id: candidateUserId },
     });
 
     if (!poolProfile) {
@@ -182,15 +327,28 @@ export class OffersService {
       );
     }
 
+    const role =
+      preResolvedRole !== undefined
+        ? preResolvedRole
+        : await this.employerRolesService.findActiveRoleForOffer(
+            employerUserId,
+            dto.roleId,
+          );
+
+    const offerDetails = this.resolveOfferDetails(dto, role);
+
     const existingOffer = await this.offerRepo.findOne({
       where: {
         employer_user_id: employerUserId,
-        candidate_user_id: dto.candidateUserId,
-        status: In([OfferStatus.PENDING, OfferStatus.ACCEPTED]),
+        candidate_user_id: candidateUserId,
+        role_id: role?.id ?? IsNull(),
+        status: In([...ACTIVE_OFFER_STATUSES]),
       },
     });
     if (existingOffer) {
-      throw new ConflictError('Offer already sent to this candidate');
+      throw new ConflictError(
+        'Offer already sent to this candidate for this role',
+      );
     }
 
     // Enforce send-cap atomically via transaction
@@ -200,6 +358,11 @@ export class OffersService {
 
     const offer = await this.offerRepo.manager
       .transaction(async (manager) => {
+        // Serialize concurrent sends per employer to prevent cap-race conditions
+        await manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [
+          employerUserId,
+        ]);
+
         const now = new Date();
         const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(
@@ -227,14 +390,15 @@ export class OffersService {
 
         const created = await manager.save(Offer, {
           employer_user_id: employerUserId,
-          candidate_user_id: dto.candidateUserId,
+          candidate_user_id: candidateUserId,
           employer_pool_profile_id: poolProfile.id,
-          role_title: dto.roleTitle,
+          role_id: role?.id ?? null,
+          role_title: offerDetails.roleTitle,
           message: dto.message ?? '',
-          role_description: dto.roleDescription ?? null,
-          compensation: dto.compensation,
-          employment_type: dto.employmentType,
-          work_arrangement: dto.workArrangement,
+          role_description: offerDetails.roleDescription,
+          compensation: offerDetails.compensation,
+          employment_type: offerDetails.employmentType,
+          work_arrangement: offerDetails.workArrangement,
           application_deadline: dto.applicationDeadline ?? null,
           status: OfferStatus.PENDING,
           expires_at: expiresAt,
@@ -244,6 +408,15 @@ export class OffersService {
           employer_user_id: employerUserId,
           offer_id: created.id,
         } as Partial<OfferDistributionLog>);
+
+        if (role) {
+          await manager.increment(
+            EmployerRole,
+            { id: role.id, employer_user_id: employerUserId },
+            'offers_sent_count',
+            1,
+          );
+        }
 
         return created;
       })
@@ -263,11 +436,11 @@ export class OffersService {
       : 'An employer';
 
     try {
-      await this.notificationDispatch.notifyOfferReceived(dto.candidateUserId, {
+      await this.notificationDispatch.notifyOfferReceived(candidateUserId, {
         offerId: offer.id,
         employerUserId,
         employerName,
-        roleTitle: dto.roleTitle,
+        roleTitle: offer.role_title,
       });
     } catch (notifyError: unknown) {
       this.logger.error(
@@ -276,6 +449,60 @@ export class OffersService {
     }
 
     return offer;
+  }
+
+  private resolveOfferDetails(
+    dto: Omit<CreateOfferDto, 'candidateIds'>,
+    role: EmployerRole | null,
+  ): {
+    roleTitle: string;
+    roleDescription: string | null;
+    compensation: string;
+    employmentType: string;
+    workArrangement: string;
+  } {
+    const roleTitle = dto.roleTitle?.trim() || role?.title?.trim();
+    const compensation =
+      dto.compensation?.trim() || this.formatRoleCompensation(role);
+    const employmentType = dto.employmentType ?? role?.employment_type ?? null;
+    const workArrangement =
+      dto.workArrangement ?? role?.work_arrangement ?? null;
+
+    if (!roleTitle) {
+      throw new BadRequestError('roleTitle is required');
+    }
+    if (!compensation) {
+      throw new BadRequestError('compensation is required');
+    }
+    if (!employmentType) {
+      throw new BadRequestError('employmentType is required');
+    }
+    if (!workArrangement) {
+      throw new BadRequestError('workArrangement is required');
+    }
+
+    return {
+      roleTitle,
+      roleDescription: dto.roleDescription?.trim() || role?.description || null,
+      compensation,
+      employmentType,
+      workArrangement,
+    };
+  }
+
+  private formatRoleCompensation(role: EmployerRole | null): string | null {
+    if (!role || (role.salary_min == null && role.salary_max == null)) {
+      return null;
+    }
+
+    const currency = role.currency ? `${role.currency} ` : '';
+    if (role.salary_min != null && role.salary_max != null) {
+      return `${currency}${role.salary_min}-${role.salary_max}`;
+    }
+    if (role.salary_min != null) {
+      return `${currency}${role.salary_min}+`;
+    }
+    return `${currency}${role.salary_max}`;
   }
 
   async listEmployerOffers(
@@ -489,6 +716,7 @@ export class OffersService {
   ): Promise<Offer> {
     const offer = await this.offerRepo.findOne({
       where: { id: offerId, candidate_user_id: candidateUserId },
+      relations: ['role'],
     });
 
     if (!offer) {
@@ -501,16 +729,27 @@ export class OffersService {
       );
     }
 
+    const hasRoleAssessment = !!offer.role?.assessment_id;
     const newStatus =
-      responseAction === 'accept' ? OfferStatus.ACCEPTED : OfferStatus.DECLINED;
+      responseAction === 'decline'
+        ? OfferStatus.DECLINED
+        : hasRoleAssessment
+          ? OfferStatus.ASSESSMENT_UNLOCKED
+          : OfferStatus.ACCEPTED;
     const respondedAt = new Date();
+    const assessmentDeadline =
+      newStatus === OfferStatus.ASSESSMENT_UNLOCKED
+        ? this.addDays(respondedAt, OFFER_ASSESSMENT_WINDOW_DAYS)
+        : null;
+
+    const now = new Date();
 
     // Atomic conditional update to prevent race conditions
     const result = await this.offerRepo.update(
       {
         id: offer.id,
         status: OfferStatus.PENDING,
-        expires_at: LessThan(new Date()) as unknown as Date,
+        expires_at: LessThan(now),
       },
       { status: OfferStatus.EXPIRED },
     );
@@ -523,7 +762,13 @@ export class OffersService {
     // Now atomically set the response (only if still PENDING)
     const updateResult = await this.offerRepo.update(
       { id: offer.id, status: OfferStatus.PENDING },
-      { status: newStatus, responded_at: respondedAt },
+      {
+        status: newStatus,
+        responded_at: respondedAt,
+        assessment_unlocked_at:
+          newStatus === OfferStatus.ASSESSMENT_UNLOCKED ? respondedAt : null,
+        assessment_deadline: assessmentDeadline,
+      },
     );
 
     if (!updateResult.affected || updateResult.affected === 0) {
@@ -534,8 +779,11 @@ export class OffersService {
 
     offer.status = newStatus;
     offer.responded_at = respondedAt;
+    offer.assessment_unlocked_at =
+      newStatus === OfferStatus.ASSESSMENT_UNLOCKED ? respondedAt : null;
+    offer.assessment_deadline = assessmentDeadline;
 
-    // Notify employer
+    // Notify employer of accept/decline
     const candidate = await this.userRepo.findOne({
       where: { id: candidateUserId },
     });
@@ -567,6 +815,32 @@ export class OffersService {
       this.logger.error(
         `Offer response notification failed offer=${offer.id}: ${String(notifyError)}`,
       );
+    }
+
+    // Notify candidate when assessment window opens
+    if (newStatus === OfferStatus.ASSESSMENT_UNLOCKED && assessmentDeadline) {
+      try {
+        const employer = await this.userRepo.findOne({
+          where: { id: offer.employer_user_id },
+        });
+        const employerName = employer
+          ? `${employer.first_name ?? ''} ${employer.last_name ?? ''}`.trim()
+          : 'Your employer';
+        await this.notificationDispatch.notifyAssessmentUnlocked(
+          candidateUserId,
+          {
+            offerId: offer.id,
+            employerUserId: offer.employer_user_id,
+            employerName,
+            roleTitle: offer.role_title,
+            assessmentDeadline: assessmentDeadline.toISOString(),
+          },
+        );
+      } catch (notifyError: unknown) {
+        this.logger.error(
+          `Assessment unlocked notification failed offer=${offer.id}: ${String(notifyError)}`,
+        );
+      }
     }
 
     this.publishOfferStatusChange(offer.employer_user_id, {
@@ -711,6 +985,134 @@ export class OffersService {
     return offer;
   }
 
+  async withdrawOffer(
+    employerUserId: string,
+    offerId: string,
+  ): Promise<{ status: string; message: string }> {
+    const offer = await this.offerRepo.findOne({
+      where: { id: offerId, employer_user_id: employerUserId },
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer not found');
+    }
+
+    if (offer.status !== OfferStatus.PENDING) {
+      throw new BadRequestError('Only pending offers can be withdrawn');
+    }
+
+    await this.offerRepo.update(
+      { id: offer.id, status: OfferStatus.PENDING },
+      { status: OfferStatus.WITHDRAWN },
+    );
+
+    // Notify candidate
+    try {
+      const employer = await this.userRepo.findOne({
+        where: { id: employerUserId },
+      });
+      const employerName = employer
+        ? `${employer.first_name ?? ''} ${employer.last_name ?? ''}`.trim()
+        : 'An employer';
+      await this.notificationDispatch.notifyOfferWithdrawn(
+        offer.candidate_user_id,
+        {
+          offerId: offer.id,
+          employerUserId,
+          employerName,
+          roleTitle: offer.role_title,
+        },
+      );
+    } catch (notifyError: unknown) {
+      this.logger.error(
+        `Offer withdrawn notification failed offer=${offer.id}: ${String(notifyError)}`,
+      );
+    }
+
+    return { status: 'success', message: 'Offer withdrawn' };
+  }
+
+  async extendAssessmentWindow(
+    employerUserId: string,
+    offerId: string,
+  ): Promise<Offer> {
+    const offer = await this.offerRepo.findOne({
+      where: { id: offerId, employer_user_id: employerUserId },
+    });
+
+    if (!offer) {
+      throw new NotFoundError('Offer not found');
+    }
+
+    if (offer.extension_used) {
+      throw new ForbiddenError('Assessment window extension already used');
+    }
+
+    const now = new Date();
+    const isExpired = offer.status === OfferStatus.EXPIRED;
+    const isUnlockedPastDeadline =
+      offer.status === OfferStatus.ASSESSMENT_UNLOCKED &&
+      offer.assessment_deadline != null &&
+      offer.assessment_deadline < now;
+
+    if (!isExpired && !isUnlockedPastDeadline) {
+      throw new BadRequestError(
+        'Only offers with an expired assessment window can be extended',
+      );
+    }
+
+    const nextDeadline = this.addDays(now, OFFER_ASSESSMENT_WINDOW_DAYS);
+
+    const result = await this.offerRepo.update(
+      {
+        id: offer.id,
+        status: In([OfferStatus.ASSESSMENT_UNLOCKED, OfferStatus.EXPIRED]),
+        extension_used: false,
+      },
+      {
+        assessment_deadline: nextDeadline,
+        extension_used: true,
+        status: OfferStatus.ASSESSMENT_UNLOCKED,
+        assessment_unlocked_at: now,
+        expiry_warning_sent_at: null,
+      },
+    );
+    if (!result.affected || result.affected === 0) {
+      throw new BadRequestError('Could not extend assessment window');
+    }
+
+    offer.assessment_deadline = nextDeadline;
+    offer.extension_used = true;
+    offer.status = OfferStatus.ASSESSMENT_UNLOCKED;
+    offer.assessment_unlocked_at = now;
+    offer.expiry_warning_sent_at = null;
+
+    try {
+      const employer = await this.userRepo.findOne({
+        where: { id: offer.employer_user_id },
+      });
+      const employerName = employer
+        ? `${employer.first_name ?? ''} ${employer.last_name ?? ''}`.trim()
+        : 'Your employer';
+      await this.notificationDispatch.notifyAssessmentWindowExtended(
+        offer.candidate_user_id,
+        {
+          offerId: offer.id,
+          employerUserId: offer.employer_user_id,
+          employerName,
+          roleTitle: offer.role_title,
+          newDeadline: nextDeadline.toISOString(),
+        },
+      );
+    } catch (notifyError: unknown) {
+      this.logger.error(
+        `Assessment window extended notification failed offer=${offer.id}: ${String(notifyError)}`,
+      );
+    }
+
+    return offer;
+  }
+
   private async getDistributionCount(employerUserId: string): Promise<number> {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -751,6 +1153,14 @@ export class OffersService {
       },
       { status: OfferStatus.EXPIRED },
     );
+    await this.offerRepo.update(
+      {
+        employer_user_id: employerUserId,
+        status: OfferStatus.ASSESSMENT_UNLOCKED,
+        assessment_deadline: LessThan(new Date()),
+      },
+      { status: OfferStatus.EXPIRED },
+    );
   }
 
   private async expireStaleOffersForCandidate(
@@ -764,5 +1174,17 @@ export class OffersService {
       },
       { status: OfferStatus.EXPIRED },
     );
+    await this.offerRepo.update(
+      {
+        candidate_user_id: candidateUserId,
+        status: OfferStatus.ASSESSMENT_UNLOCKED,
+        assessment_deadline: LessThan(new Date()),
+      },
+      { status: OfferStatus.EXPIRED },
+    );
+  }
+
+  private addDays(date: Date, days: number): Date {
+    return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
   }
 }

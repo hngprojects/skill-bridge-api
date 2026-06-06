@@ -135,8 +135,13 @@ export const ErrorMessages = {
     OFFER_EXPIRED: 'This offer has expired',
   },
   EMPLOYER_VERIFICATION: {
-    NOT_VERIFIED: 'Complete your company profile to access this feature.',
+    NOT_VERIFIED:
+      'Your employer account is pending verification. You will be notified once approved.',
     WEBSITE_NOT_RESOLVABLE:
       'Company website could not be reached. Please check the URL.',
+  },
+  EMPLOYER_PROFILE: {
+    FIELD_LOCKED: (lastChangedAt: string, unlocksAt: string) =>
+      `This field was last updated on ${lastChangedAt} and can next be changed on ${unlocksAt}.`,
   },
 } as const;

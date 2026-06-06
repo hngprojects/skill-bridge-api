@@ -43,6 +43,7 @@ describe('SkillAssessmentService', () => {
 
   let bankExhaustedAlert: { notify: jest.Mock };
   let eligibleSkillQuestions: AssessmentQuestion[];
+  let warmCacheMock: jest.Mock;
 
   const userId = 'talent-user-1';
   let profile = makeTalentProfile({
@@ -133,6 +134,8 @@ describe('SkillAssessmentService', () => {
 
     bankExhaustedAlert = { notify: jest.fn() };
 
+    warmCacheMock = jest.fn().mockResolvedValue(undefined);
+
     service = new SkillAssessmentService(
       talentProfileRepo as never,
       questionRepo as never,
@@ -141,19 +144,24 @@ describe('SkillAssessmentService', () => {
       {} as never,
       {} as never,
       { generate: jest.fn() } as never,
-      { generateQuestions: jest.fn().mockResolvedValue([]) } as never,
       bankExhaustedAlert as never,
+      { warmCache: warmCacheMock } as never,
     );
   });
 
   it(`blocks start when ${SKILL_ASSESSMENT_MAX_ATTEMPTS} skill attempts are already completed`, async () => {
     attemptRepo.count.mockResolvedValue(SKILL_ASSESSMENT_MAX_ATTEMPTS);
+    const startPromise = service.start(userId);
 
-    await expect(service.start(userId)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
-    await expect(service.start(userId)).rejects.toMatchObject({
-      message: ErrorMessages.SKILL_ASSESSMENT.MAX_ATTEMPTS_REACHED,
+    await expect(startPromise).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(startPromise).rejects.toMatchObject({
+      response: {
+        error: 'SKILL_MAX_ATTEMPTS_REACHED',
+        message: ErrorMessages.SKILL_ASSESSMENT.MAX_ATTEMPTS_REACHED,
+        attempts_used: SKILL_ASSESSMENT_MAX_ATTEMPTS,
+        max_attempts: SKILL_ASSESSMENT_MAX_ATTEMPTS,
+        unlock_condition: 'complete_advanced_assessment',
+      },
     });
     expect(attemptRepo.save).not.toHaveBeenCalled();
   });
@@ -211,9 +219,18 @@ describe('SkillAssessmentService', () => {
       }),
     );
 
-    await expect(service.start(userId)).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    const startPromise = service.start(userId);
+
+    await expect(startPromise).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(startPromise).rejects.toMatchObject({
+      response: {
+        error: 'SKILL_MAX_ATTEMPTS_REACHED',
+        message: ErrorMessages.SKILL_ASSESSMENT.MAX_ATTEMPTS_REACHED,
+        attempts_used: SKILL_ASSESSMENT_MAX_ATTEMPTS,
+        max_attempts: SKILL_ASSESSMENT_MAX_ATTEMPTS,
+        unlock_condition: 'complete_advanced_assessment',
+      },
+    });
     expect(attemptRepo.update).toHaveBeenCalledWith('stale-attempt', {
       completed_at: expect.any(Date),
       force_submitted: true,
@@ -255,6 +272,36 @@ describe('SkillAssessmentService', () => {
     const result = await service.start(userId);
 
     expect(result.attempt_number).toBe(3);
+  });
+
+  it('never returns text questions even when they exist in the bank', async () => {
+    // Inject text questions into the bank alongside MCQs
+    eligibleSkillQuestions = [
+      ...makeSkillBankQuestions(),
+      Object.assign(new AssessmentQuestion(), {
+        id: 'skill-text-sneaky-1',
+        question_type: QuestionType.REQUIRED_TEXT,
+        question_text: 'Describe your approach.',
+        options: null,
+        correct_answer: null,
+      }),
+      Object.assign(new AssessmentQuestion(), {
+        id: 'skill-text-sneaky-2',
+        question_type: QuestionType.OPTIONAL_TEXT,
+        question_text: 'Any additional thoughts?',
+        options: null,
+        correct_answer: null,
+      }),
+    ];
+
+    const result = await service.start(userId);
+
+    for (const question of result.questions) {
+      expect(question.block).toBe('mcq');
+      expect([QuestionType.SINGLE_PICK, QuestionType.MULTI_PICK]).toContain(
+        question.question_type,
+      );
+    }
   });
 
   it('refuses to start when the unseen bank lacks the skill question mix', async () => {
@@ -445,6 +492,34 @@ describe('SkillAssessmentService', () => {
         generated_questions_json: {
           context: { verified_level: VerifiedLevel.MID },
           questions: [],
+        },
+      }),
+    );
+
+    await expect(
+      service.getSession(userId, 'attempt-1'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('throws 400 when a stored skill session contains a text question', async () => {
+    attemptRepo.findOne.mockResolvedValue(
+      Object.assign(new AssessmentAttempt(), {
+        id: 'attempt-1',
+        talent_profile_id: profile.id,
+        assessment_type: AssessmentType.SKILL,
+        started_at: new Date('2026-05-21T10:00:00.000Z'),
+        generated_questions_json: {
+          context: { verified_level: VerifiedLevel.MID },
+          questions: [
+            {
+              question_id: 'question-1',
+              question_number: 1,
+              question_type: QuestionType.REQUIRED_TEXT,
+              question_text: 'Describe your process.',
+              options: null,
+              correct_answer: null,
+            },
+          ],
         },
       }),
     );
@@ -731,6 +806,10 @@ describe('SkillAssessmentService', () => {
     expect(result.percentage).toBe(100);
     expect(result.passed).toBe(true);
     expect(result.failed).toBe(false);
+    expect(warmCacheMock).toHaveBeenCalledWith(
+      profile.track,
+      expect.any(String),
+    );
   });
 
   it('resolves Stage 2 confirmed-level outcomes from claimed-level score', () => {

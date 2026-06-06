@@ -1,7 +1,14 @@
 import { NotFoundException } from '@nestjs/common';
 import { EmployerService } from './employer.service';
 import { EmployerProfile } from './entities/employer-profile.entity';
+import {
+  buildEmployerNotificationLink,
+  mapEmployerNotificationType,
+  toEmployerNotificationItem,
+} from './employer-notification.mapper';
+import { NotificationType } from '../notifications/notification-type.enum';
 import { NotFoundError } from '../../shared';
+import { ProfileFieldLockedError } from './employer-profile-cooldown';
 
 describe('EmployerService', () => {
   const userId = 'employer-user-1';
@@ -134,6 +141,40 @@ describe('EmployerService', () => {
     );
   });
 
+  it('completes onboarding with only required fields', async () => {
+    manager.findOne.mockResolvedValue(null);
+
+    const result = await service.completeOnboarding(userId, {
+      joiningAs: 'recruiter',
+      desiredRoles: ['frontend_developer'],
+      region: 'Africa',
+      hiringCountRange: '6_10',
+      companyWebsite: 'https://acmelabs.example',
+    });
+
+    expect(manager.create).toHaveBeenCalledWith(
+      EmployerProfile,
+      expect.objectContaining({
+        employer_type: 'recruiter',
+        joining_as: 'recruiter',
+        company_name: null,
+        company_size: null,
+        industry: null,
+        desired_roles: ['frontend_developer'],
+        hiring_locations: ['Africa'],
+        region: 'Africa',
+        hiring_count_range: '6_10',
+        company_website: 'https://acmelabs.example',
+        website_url: 'https://acmelabs.example',
+        preferred_experience_levels: null,
+      }),
+    );
+    expect(result.profile).toMatchObject({
+      desired_roles: ['frontend_developer'],
+      company_website: 'https://acmelabs.example',
+    });
+  });
+
   it('maps expanded legacy onboarding fields onto the employer profile', async () => {
     manager.findOne.mockResolvedValue(null);
 
@@ -195,6 +236,79 @@ describe('EmployerService', () => {
     ).rejects.toThrow('Invalid user');
   });
 
+  it('returns restricted field metadata from getProfile', async () => {
+    const recentChange = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    employerProfileRepository.findOne.mockResolvedValue(
+      Object.assign(new EmployerProfile(), {
+        user_id: userId,
+        company_name: 'Acme Labs',
+        company_name_changed_at: recentChange,
+      }),
+    );
+
+    const result = await service.getProfile(userId);
+
+    expect(result.restricted_fields.company_name.locked).toBe(true);
+    expect(result.restricted_fields.company_name.last_changed_at).toBe(
+      recentChange.toISOString(),
+    );
+    expect(result.restricted_fields.company_website.locked).toBe(false);
+  });
+
+  it('blocks restricted field changes within the 180-day cooldown', async () => {
+    const recentChange = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    employerProfileRepository.findOne.mockResolvedValue(
+      Object.assign(new EmployerProfile(), {
+        user_id: userId,
+        company_name: 'Acme Labs',
+        company_name_changed_at: recentChange,
+      }),
+    );
+
+    await expect(
+      service.updateProfile(userId, { companyName: 'New Corp' }),
+    ).rejects.toThrow(ProfileFieldLockedError);
+  });
+
+  it('allows non-restricted field changes while a restricted field is locked', async () => {
+    const recentChange = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    employerProfileRepository.findOne.mockResolvedValue(
+      Object.assign(new EmployerProfile(), {
+        user_id: userId,
+        company_name: 'Acme Labs',
+        company_name_changed_at: recentChange,
+        industry: 'Fintech',
+      }),
+    );
+
+    const result = await service.updateProfile(userId, {
+      industry: 'Healthtech',
+    });
+
+    expect(result.profile.industry).toBe('Healthtech');
+    expect(result.profile.company_name).toBe('Acme Labs');
+  });
+
+  it('sets changed_at when a restricted field is updated after cooldown', async () => {
+    const oldChange = new Date(Date.now() - 200 * 24 * 60 * 60 * 1000);
+    const existing = Object.assign(new EmployerProfile(), {
+      user_id: userId,
+      company_name: 'Acme Labs',
+      company_name_changed_at: oldChange,
+    });
+    employerProfileRepository.findOne.mockResolvedValue(existing);
+
+    const result = await service.updateProfile(userId, {
+      companyName: 'New Corp',
+    });
+
+    expect(result.profile.company_name).toBe('New Corp');
+    expect(result.profile.company_name_changed_at).toBeInstanceOf(Date);
+    expect(result.profile.company_name_changed_at!.getTime()).toBeGreaterThan(
+      oldChange.getTime(),
+    );
+  });
+
   it('does not overwrite profile settings with whitespace-only strings', async () => {
     const existing = Object.assign(new EmployerProfile(), {
       user_id: userId,
@@ -249,7 +363,7 @@ describe('EmployerService', () => {
       expect(result.company_name).toBe('Acme Labs');
       expect(result.is_verified).toBe(true);
       expect(result.is_new_to_platform).toBe(true);
-      expect(result.hire_count).toBe(0);
+      expect(result.hire_count).toBeUndefined();
       expect(result.member_since).toBe(recentDate.toISOString());
     });
 
@@ -286,6 +400,67 @@ describe('EmployerService', () => {
       await expect(
         service.getPublicProfile('nonexistent-user'),
       ).rejects.toThrow(NotFoundError);
+    });
+  });
+
+  describe('notification mapping helpers', () => {
+    it('maps employer notification types to product-doc aliases', () => {
+      expect(
+        mapEmployerNotificationType(
+          NotificationType.JOB_READY_MATCHES_AVAILABLE,
+        ),
+      ).toBe('new_matching_talent');
+      expect(mapEmployerNotificationType(NotificationType.OFFER_ACCEPTED)).toBe(
+        'offer_accepted_assessment_unlocked',
+      );
+      expect(
+        mapEmployerNotificationType(NotificationType.ASSESSMENT_PASSED),
+      ).toBe('candidate_passed');
+      expect(
+        mapEmployerNotificationType(NotificationType.ASSESSMENT_FAILED),
+      ).toBe('candidate_failed');
+      expect(mapEmployerNotificationType(NotificationType.OFFER_DECLINED)).toBe(
+        'offer_declined',
+      );
+    });
+
+    it('builds links from notification data', () => {
+      expect(buildEmployerNotificationLink({ offerId: 'offer-1' })).toEqual({
+        entity_id: 'offer-1',
+        entity_type: 'offer',
+      });
+      expect(
+        buildEmployerNotificationLink({ assessmentId: 'assessment-1' }),
+      ).toEqual({ entity_id: 'assessment-1', entity_type: 'assessment' });
+      expect(
+        buildEmployerNotificationLink({ candidateUserId: 'candidate-1' }),
+      ).toEqual({ entity_id: 'candidate-1', entity_type: 'candidate' });
+      expect(
+        buildEmployerNotificationLink({ candidateUserIds: ['c-1'] }),
+      ).toEqual({ entity_id: null, entity_type: 'discovery' });
+      expect(buildEmployerNotificationLink(null)).toBeNull();
+    });
+
+    it('maps a notification list item to the employer item shape', () => {
+      expect(
+        toEmployerNotificationItem({
+          id: 'notif-3',
+          type: NotificationType.OFFER_DECLINED,
+          title: 'Offer declined',
+          body: 'John declined your offer',
+          data: { candidateUserId: 'candidate-2' },
+          is_read: false,
+          read_at: null,
+          created_at: '2026-06-03T10:00:00.000Z',
+        }),
+      ).toEqual({
+        notification_id: 'notif-3',
+        type: 'offer_declined',
+        message: 'John declined your offer',
+        timestamp: '2026-06-03T10:00:00.000Z',
+        read: false,
+        link: { entity_id: 'candidate-2', entity_type: 'candidate' },
+      });
     });
   });
 });
