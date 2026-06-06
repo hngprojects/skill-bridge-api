@@ -9,11 +9,12 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from '../../users/entities/user.entity';
 import { EmployerAssessmentQuestion } from './employer-assessment-question.entity';
 import { EmployerAssessmentInvite } from './employer-assessment-invite.entity';
 import { EmployerAssessmentSubmission } from './employer-assessment-submission.entity';
+import { CredlaneCatalogueAssessment } from './credlane-catalogue-assessment.entity';
 
 export enum EmployerAssessmentExperienceLevel {
   JUNIOR = 'junior',
@@ -24,6 +25,8 @@ export enum EmployerAssessmentExperienceLevel {
 export enum EmployerAssessmentQuestionSource {
   CREDLANE_BANK = 'credlane_bank',
   COMPANY_QUESTIONS = 'company_questions',
+  MANUAL = 'manual',
+  ADMIN_UPLOAD = 'admin_upload',
 }
 
 @Entity('employer_assessments')
@@ -94,6 +97,17 @@ export class EmployerAssessment {
   @ApiProperty()
   @Column({ type: 'boolean', default: true })
   is_active: boolean;
+
+  @ApiPropertyOptional({ format: 'uuid', nullable: true })
+  @Column({ type: 'uuid', nullable: true })
+  credlane_assessment_id: string | null;
+
+  @ManyToOne(() => CredlaneCatalogueAssessment, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'credlane_assessment_id' })
+  credlane_catalogue_assessment: CredlaneCatalogueAssessment | null;
 
   @OneToMany(
     () => EmployerAssessmentQuestion,

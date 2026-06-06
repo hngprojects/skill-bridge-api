@@ -42,6 +42,7 @@ import {
   SuccessMessages,
 } from '../../shared';
 import { AiResourcesService } from '../ai-resources/ai-resources.service';
+import { listTalentSupportedRoleTracks } from './talent.constants';
 
 export type TalentOnboardingResult = {
   message: string;
@@ -408,11 +409,23 @@ export class TalentService {
 
   private toRoleLabel(roleTrack: string | null): string | null {
     if (!roleTrack) return null;
+    const match = listTalentSupportedRoleTracks().find(
+      (track) => track.slug === roleTrack,
+    );
+    if (match) {
+      return match.label;
+    }
     return roleTrack
       .split('_')
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
+  }
+
+  listSupportedRoleTracks(): {
+    tracks: ReturnType<typeof listTalentSupportedRoleTracks>;
+  } {
+    return { tracks: listTalentSupportedRoleTracks() };
   }
 
   async updateUserAvatar(userId: string, avatarUrl: string): Promise<void> {
@@ -445,7 +458,7 @@ export class TalentService {
     await this.talentProfileRepository.save(profile);
 
     // Warm resource cache in the background so resources page loads instantly
-    this.aiResourcesService.warmCache(dto.track).catch((err) => {
+    this.aiResourcesService.warmCache(dto.track, 'general').catch((err) => {
       this.logger.error(
         `Resource cache warming failed: ${err instanceof Error ? err.message : 'Unknown error'}`,
       );

@@ -8,6 +8,7 @@ import { UserRole } from '../../users/entities/user.entity';
 import { TalentProfile } from '../entities/talent-profile.entity';
 import { UsersService } from '../../users/users.service';
 import { PersonalAssessmentService } from './personal-assessment.service';
+import { createTestPersonalAssessmentQuestionService } from './personal-assessment-question.service';
 import {
   makeTalentProfile,
   makeTalentUser,
@@ -16,6 +17,9 @@ import {
 
 describe('PersonalAssessmentService', () => {
   let service: PersonalAssessmentService;
+  let questionCatalog: ReturnType<
+    typeof createTestPersonalAssessmentQuestionService
+  >;
   let usersService: Pick<UsersService, 'findOne'>;
   let repository: {
     findOne: jest.Mock;
@@ -23,6 +27,7 @@ describe('PersonalAssessmentService', () => {
     save: jest.Mock;
     manager: { transaction: jest.Mock };
   };
+  let warmCacheMock: jest.Mock;
 
   const userId = 'talent-user-1';
   let profileStore: TalentProfile;
@@ -94,9 +99,15 @@ describe('PersonalAssessmentService', () => {
       },
     };
 
+    questionCatalog = createTestPersonalAssessmentQuestionService();
+
+    warmCacheMock = jest.fn().mockResolvedValue(undefined);
+
     service = new PersonalAssessmentService(
       repository as unknown as Repository<TalentProfile>,
       usersService as UsersService,
+      questionCatalog,
+      { warmCache: warmCacheMock } as any,
     );
   });
 
@@ -110,7 +121,7 @@ describe('PersonalAssessmentService', () => {
       progress: {
         completedSections: [1],
         nextSection: 2,
-        totalSections: 7,
+        totalSections: 5,
         sectionsCompleted: 1,
         isComplete: false,
       },
@@ -126,7 +137,7 @@ describe('PersonalAssessmentService', () => {
     await expect(service.saveSection(userId, 0, {})).rejects.toBeInstanceOf(
       BadRequestException,
     );
-    await expect(service.saveSection(userId, 8, {})).rejects.toBeInstanceOf(
+    await expect(service.saveSection(userId, 6, {})).rejects.toBeInstanceOf(
       BadRequestException,
     );
   });
@@ -134,7 +145,7 @@ describe('PersonalAssessmentService', () => {
   it('saveSection returns 409 when all sections are already complete', async () => {
     profileStore.personal_assessment_answers = {
       ...section1Answers(),
-      _meta: { completedSections: [1, 2, 3, 4, 5, 6, 7] },
+      _meta: { completedSections: [1, 2, 3, 4, 5] },
     };
 
     const promise = service.saveSection(userId, 1, section1Answers());
@@ -159,6 +170,68 @@ describe('PersonalAssessmentService', () => {
     });
   });
 
+  it('includes optionItems with labels for track-specific imported questions', async () => {
+    profileStore.track = 'backend_developer';
+    const trackCatalog = {
+      getAllQuestions: jest.fn((track?: string | null) => {
+        const shared = [
+          {
+            key: 'claimed_level',
+            questionNumber: 1,
+            inputType: 'single' as const,
+            required: true,
+            sectionSlug: 'skills_and_expertise',
+            options: ['junior', 'mid'],
+          },
+        ];
+        if (track === 'backend_developer') {
+          return [
+            ...shared,
+            {
+              key: 'track_specialisation',
+              questionNumber: 13,
+              inputType: 'single' as const,
+              required: true,
+              sectionSlug: 'professional_background',
+              prompt: 'Specialisation?',
+              optionItems: [
+                {
+                  value: 'api_services',
+                  label:
+                    'API and services; I build and maintain APIs and microservices',
+                },
+              ],
+              options: ['api_services'],
+            },
+          ];
+        }
+        return shared;
+      }),
+      findQuestionSection: jest.fn().mockReturnValue(1),
+      getSectionQuestions: jest.fn().mockReturnValue([]),
+      getOnboardingBackedQuestionKeys: jest.fn().mockReturnValue([]),
+    };
+
+    const trackService = new PersonalAssessmentService(
+      repository as unknown as Repository<TalentProfile>,
+      usersService as UsersService,
+      trackCatalog as never,
+    );
+
+    const result = await trackService.startGenerated(userId);
+    const specialisation = result.session.questions.find(
+      (question) => question.key === 'track_specialisation',
+    );
+
+    expect(specialisation?.options).toEqual(['api_services']);
+    expect(specialisation?.optionItems).toEqual([
+      {
+        value: 'api_services',
+        label: 'API and services; I build and maintain APIs and microservices',
+      },
+    ]);
+  });
+
   it('submitGenerated saves sparse generated answers and completes the assessment', async () => {
     const startResult = await service.startGenerated(userId);
 
@@ -176,9 +249,13 @@ describe('PersonalAssessmentService', () => {
         generatedSession: expect.objectContaining({
           sessionId: startResult.session.sessionId,
         }),
-        completedSections: [1, 2, 3, 4, 5, 6, 7],
+        completedSections: [1, 2, 3, 4, 5],
       },
     });
+    expect(warmCacheMock).toHaveBeenCalledWith(
+      profileStore.track,
+      expect.any(String),
+    );
   });
 
   it('complete finalizes stored generated answers without section coverage', async () => {
@@ -200,9 +277,13 @@ describe('PersonalAssessmentService', () => {
         generatedSession: expect.objectContaining({
           sessionId: startResult.session.sessionId,
         }),
-        completedSections: [1, 2, 3, 4, 5, 6, 7],
+        completedSections: [1, 2, 3, 4, 5],
       },
     });
+    expect(warmCacheMock).toHaveBeenCalledWith(
+      profileStore.track,
+      expect.any(String),
+    );
   });
 
   it('getResumeProgress returns section progress without creating a profile', async () => {
@@ -216,7 +297,7 @@ describe('PersonalAssessmentService', () => {
     expect(resume.progress).toEqual({
       completedSections: [1],
       nextSection: 2,
-      totalSections: 7,
+      totalSections: 5,
       sectionsCompleted: 1,
       isComplete: false,
     });

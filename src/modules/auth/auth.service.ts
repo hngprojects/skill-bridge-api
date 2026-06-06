@@ -87,6 +87,12 @@ export interface AuthResponse {
   data: AuthSession['data'];
 }
 
+export interface OtpDeliveryResponse {
+  message: string;
+  otp_expires_at: string;
+  otp_expires_in_seconds: number;
+}
+
 export type VerifyEmailResult = AuthResult;
 
 export interface ForgotPasswordResponse {
@@ -128,7 +134,7 @@ export class AuthService {
     private readonly emailChangeOtpService?: EmailChangeOtpService,
   ) {}
 
-  async register(dto: RegisterDto): Promise<{ message: string }> {
+  async register(dto: RegisterDto): Promise<OtpDeliveryResponse> {
     const user = await this.usersService.create({
       email: dto.email,
       password: dto.password,
@@ -151,9 +157,10 @@ export class AuthService {
       recipientFirstName: user.first_name,
     });
 
-    return {
-      message: SuccessMessages.AUTH.VERIFICATION_OTP_SENT,
-    };
+    return this.buildOtpDeliveryResponse(
+      SuccessMessages.AUTH.VERIFICATION_OTP_SENT,
+      issuedOtp.expiresAt,
+    );
   }
 
   async verifyEmail(dto: VerifyEmailDto): Promise<VerifyEmailResult> {
@@ -185,7 +192,7 @@ export class AuthService {
 
   async resendVerification(
     dto: ResendVerificationDto,
-  ): Promise<{ message: string }> {
+  ): Promise<OtpDeliveryResponse> {
     const user = await this.usersService.findByEmail(dto.email);
     if (!user) {
       throw new BadRequestError(ErrorMessages.AUTH.ACCOUNT_NOT_FOUND);
@@ -216,9 +223,10 @@ export class AuthService {
       recipientFirstName: user.first_name,
     });
 
-    return {
-      message: SuccessMessages.AUTH.VERIFICATION_EMAIL_RESENT,
-    };
+    return this.buildOtpDeliveryResponse(
+      SuccessMessages.AUTH.VERIFICATION_EMAIL_RESENT,
+      issuedOtp.expiresAt,
+    );
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
@@ -268,6 +276,20 @@ export class AuthService {
     return {
       status: 'success',
       message: SuccessMessages.AUTH.FORGOT_PASSWORD,
+    };
+  }
+
+  private buildOtpDeliveryResponse(
+    message: string,
+    expiresAt: Date,
+  ): OtpDeliveryResponse {
+    return {
+      message,
+      otp_expires_at: expiresAt.toISOString(),
+      otp_expires_in_seconds: Math.max(
+        1,
+        Math.ceil((expiresAt.getTime() - Date.now()) / 1000),
+      ),
     };
   }
 
@@ -457,15 +479,12 @@ export class AuthService {
       .replace(/^-|-$/g, '');
     const filename = `skillbridge-data-export-${namePart}-${new Date().toISOString().slice(0, 10)}.json`;
 
-    // Send email with the export as an attachment
-    await this.mailService.send({
+    // Send email with the export template and JSON attachment
+    await this.mailService.sendDataExportReady({
       to: user.email,
-      subject: 'Your SkillBridge data export',
-      text:
-        `Hi ${user.first_name ?? 'there'},\n\n` +
-        `Your data export is attached to this email as ${filename}.\n\n` +
-        `If you did not request this export, please contact support.\n`,
-      attachments: [{ filename, content: Buffer.from(json) }],
+      recipientFirstName: user.first_name,
+      fileName: filename,
+      attachmentContent: Buffer.from(json),
     });
 
     // Also return a data-URI so the frontend can trigger an immediate download
@@ -703,13 +722,13 @@ export class AuthService {
 
     switch (user.role) {
       case UserRole.TALENT:
-        return '/dashboard';
+        return '/t/dashboard';
       case UserRole.EMPLOYER:
-        return '/discovery';
+        return '/e/dashboard';
       case UserRole.ADMIN:
         return '/admin';
       default:
-        return '/dashboard';
+        return '/t/dashboard';
     }
   }
 

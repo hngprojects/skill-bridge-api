@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -44,12 +46,16 @@ export class OffersController {
 
   @Post('employer/offers')
   @Roles(UserRole.EMPLOYER)
-  @ApiOperation({ summary: 'Create and send an offer to a candidate' })
-  async createOffer(
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary:
+      'Send offer(s) to one or more candidates for a role. Pass multiple candidateIds for bulk sending.',
+  })
+  async sendOffers(
     @CurrentUser('sub') employerUserId: string,
     @Body() dto: CreateOfferDto,
   ) {
-    return this.offersService.createOffer(employerUserId, dto);
+    return this.offersService.sendOffers(employerUserId, dto);
   }
 
   @Get('employer/offers')
@@ -240,6 +246,36 @@ export class OffersController {
     @Param('offerId', ParseUUIDPipe) offerId: string,
   ) {
     return await this.offersService.markHireComplete(employerUserId, offerId);
+  }
+
+  @Patch('employer/offers/:offerId/mark-hired')
+  @Roles(UserRole.EMPLOYER)
+  @ApiOperation({ summary: 'Alias: mark an accepted offer as hire complete' })
+  async markHired(
+    @CurrentUser('sub') employerUserId: string,
+    @Param('offerId', ParseUUIDPipe) offerId: string,
+  ) {
+    return await this.offersService.markHireComplete(employerUserId, offerId);
+  }
+
+  @Patch('employer/offers/:offerId/withdraw')
+  @Roles(UserRole.EMPLOYER)
+  @ApiOperation({ summary: 'Withdraw a pending offer' })
+  async withdrawOffer(
+    @CurrentUser('sub') employerUserId: string,
+    @Param('offerId', ParseUUIDPipe) offerId: string,
+  ) {
+    return await this.offersService.withdrawOffer(employerUserId, offerId);
+  }
+
+  @Patch('employer/offers/:offerId/assessment-window/extend')
+  @Roles(UserRole.EMPLOYER)
+  @ApiOperation({ summary: 'Extend an unlocked assessment offer window once' })
+  async extendAssessmentWindow(
+    @CurrentUser('sub') employerUserId: string,
+    @Param('offerId', ParseUUIDPipe) offerId: string,
+  ) {
+    return this.offersService.extendAssessmentWindow(employerUserId, offerId);
   }
 
   // ─── Talent endpoints ─────────────────────────────────────────────────────
