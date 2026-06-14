@@ -6,7 +6,7 @@ import {
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { APICallError, generateText, LanguageModel } from 'ai';
+import { APICallError, generateText, LanguageModel, Output } from 'ai';
 import { z } from 'zod';
 import { env } from '../../config/env';
 
@@ -103,13 +103,14 @@ export class OpenRouterService {
     try {
       const result = await generateText({
         model: this.resolveModel(useWebSearch),
+        output: Output.object({ schema }),
         temperature,
         maxRetries: this.maxRetries,
         system: systemPrompt,
         prompt: userPrompt,
         abortSignal: AbortSignal.timeout(timeout),
       });
-      return this.parseJsonResponse(result.text, schema);
+      return result.output;
     } catch (error: unknown) {
       if (error instanceof Error && error.name === 'TimeoutError') {
         this.logger.error(`AI call timed out after ${timeout}ms`);
@@ -120,20 +121,6 @@ export class OpenRouterService {
         'AI service temporarily unavailable',
       );
     }
-  }
-
-  private parseJsonResponse<T>(text: string, schema: z.ZodType<T>): T {
-    const trimmed = text.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidate = fenced?.[1]?.trim() ?? trimmed;
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-
-    if (start === -1 || end === -1 || end < start) {
-      throw new Error(`No JSON object found in model response: ${trimmed}`);
-    }
-
-    return schema.parse(JSON.parse(candidate.slice(start, end + 1)));
   }
 
   private formatError(error: unknown): string {
