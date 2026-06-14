@@ -19,6 +19,9 @@ export class Lt3GenerationService {
       userPrompt,
       lt3Schema,
       0.4,
+      false,
+      undefined,
+      'lt3_generation',
     );
   }
 }

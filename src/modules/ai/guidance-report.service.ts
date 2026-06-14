@@ -25,6 +25,9 @@ export class GuidanceReportService {
       userPrompt,
       guidanceReportSchema,
       0.5,
+      false,
+      undefined,
+      'guidance_report',
     );
 
     // Strip leading ": " or ":" the model sometimes prefixes

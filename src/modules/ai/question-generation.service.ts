@@ -23,6 +23,9 @@ export class QuestionGenerationService {
       userPrompt,
       questionGenerationSchema,
       0.3,
+      false,
+      undefined,
+      'question_generation',
     );
     return raw.questions.map((q) => this.parseQuestion(q, input));
   }

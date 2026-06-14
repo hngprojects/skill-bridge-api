@@ -52,6 +52,7 @@ export class ResourceGenerationService {
       0.6,
       false, // no web search needed — we verify URLs externally
       timeoutMs,
+      'resource_generation',
     );
 
     this.logger.log(
