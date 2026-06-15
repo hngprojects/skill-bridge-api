@@ -3,7 +3,6 @@ import { OpenRouterService } from './openrouter.service';
 import { UrlResolutionService } from './url-resolution.service';
 import { aiResourcesPayloadSchema } from './ai.schemas';
 import { AiResourcesPayload } from './ai.types';
-import { AI_RESOURCE_CONSTANTS } from '../ai-resources/ai-resources.constants';
 import {
   buildResourceGenerationPrompt,
   RESOURCE_GENERATION_SYSTEM_PROMPT,

@@ -73,10 +73,12 @@ export class OpenRouterService {
       this.openRouterProvider = null;
     } else if (this.useNvidia) {
       this.logger.log('AI provider: NVIDIA (OpenAI-compatible)');
-      this.openAiCompatibleProvider = createOpenAI({
+      const openAiProvider = createOpenAI({
         apiKey: env.OPENROUTER_API_KEY ?? '',
         baseURL: env.OPENROUTER_BASE_URL,
-      }).chat as AiProviderFactory;
+      });
+      this.openAiCompatibleProvider = (modelId: string) =>
+        openAiProvider.chat(modelId);
       this.anthropicProvider = null;
       this.googleProvider = null;
       this.openRouterProvider = null;
@@ -237,11 +239,11 @@ export class OpenRouterService {
     },
     durationMs: number,
   ): AiUsageMetrics {
-    const usage = (result.usage ?? {}) as Record<string, unknown>;
+    const usage = (result.usage ?? {});
     const rawUsage = ((usage.raw as Record<string, unknown> | undefined) ??
-      {}) as Record<string, unknown>;
+      {});
     const providerMetadata = (result.providerMetadata ??
-      {}) as Record<string, unknown>;
+      {});
     const openRouterMetadata = (providerMetadata.openrouter ??
       {}) as Record<string, unknown>;
     const responseBody =

@@ -1,12 +1,11 @@
 import { AI_RESOURCE_CONSTANTS } from '../ai-resources/ai-resources.constants';
+import { QuestionType } from '../assessments/entities/assessment-question.entity';
 import type {
   GenerateLt3Input,
   GenerateQuestionsInput,
   GuidanceReportInput,
 } from './ai.types';
 
-const SINGLE_PICK = 'single_pick';
-const MULTI_PICK = 'multi_pick';
 const SKILL_ASSESSMENT_PASS_PERCENTAGE = 50;
 
 export const QUESTION_GENERATION_SYSTEM_PROMPT = `You write high-signal assessment questions. Return ONLY valid JSON.`;
@@ -15,7 +14,8 @@ export function buildQuestionGenerationPrompt(
   input: GenerateQuestionsInput,
 ): string {
   const isMcq =
-    input.question_type === SINGLE_PICK || input.question_type === MULTI_PICK;
+    input.question_type === QuestionType.SINGLE_PICK ||
+    input.question_type === QuestionType.MULTI_PICK;
 
   const lines = [
     `Track: ${input.track}`,
