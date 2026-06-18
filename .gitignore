@@ -61,3 +61,6 @@ data/question-banks/seed-advanced.manifest.json
 # Generated skill assessment question bank (generate locally — not committed)
 data/question-banks/seed-skill.json
 data/question-banks/seed-skill.manifest.json
+branch_structure.json
+temp_auto_push.bat
+temp_interactive_push.bat

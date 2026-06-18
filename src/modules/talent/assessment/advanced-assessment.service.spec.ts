@@ -7,6 +7,7 @@ import {
 import { AssessmentTier } from '../../assessments/entities/assessment-result.entity';
 import {
   AssessmentAttempt,
+  AssessmentQuestion,
   AssessmentScore,
   AssessmentScoreQuestionType,
   AssessmentType,
@@ -334,6 +335,11 @@ describe('AdvancedAssessmentService', () => {
         .fn()
         .mockImplementation((_entity: unknown, data: unknown) => data),
       update: entityManagerUpdate,
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue(null),
+      }),
     };
 
     talentProfileRepo = {
@@ -499,6 +505,12 @@ describe('AdvancedAssessmentService', () => {
         findOne: jest.fn().mockResolvedValue(makeAttempt()),
         find: jest.fn().mockResolvedValue([processingAttempt]),
         save: jest.fn(),
+        update: jest.fn(),
+        createQueryBuilder: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          getOne: jest.fn().mockResolvedValue(processingAttempt),
+        }),
       };
       talentProfileRepo.manager.transaction.mockImplementationOnce(
         (work: (em: typeof txManager) => Promise<unknown>) => work(txManager),
@@ -1221,6 +1233,87 @@ describe('AdvancedAssessmentService', () => {
     });
   });
 
+  describe('findEligibleQuestions()', () => {
+    it('supplements live questions with generated questions instead of falling back only when live is empty', async () => {
+      const profile = makeTalentProfile({
+        id: 'profile-1',
+        track: 'backend_developer',
+        validated_level: VerifiedLevel.MID,
+      });
+
+      const liveQuestions = [
+        { id: 'live-1', is_live: true },
+        { id: 'live-2', is_live: true },
+      ] as AssessmentQuestion[];
+      const generatedQuestions = [
+        { id: 'generated-1', is_live: false },
+      ] as AssessmentQuestion[];
+
+      const liveQuery = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(liveQuestions),
+      };
+      const generatedQuery = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(generatedQuestions),
+      };
+      const manager = {
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValueOnce(liveQuery)
+          .mockReturnValueOnce(generatedQuery),
+      };
+
+      const result = await (service as any).findEligibleQuestions(
+        manager,
+        profile,
+      );
+
+      expect(result).toEqual([...liveQuestions, ...generatedQuestions]);
+      expect(manager.createQueryBuilder).toHaveBeenCalledTimes(2);
+    });
+
+    it('only excludes questions from completed or force-submitted attempts', async () => {
+      const profile = makeTalentProfile({
+        id: 'profile-1',
+        track: 'backend_developer',
+        validated_level: VerifiedLevel.MID,
+      });
+
+      const liveQuery = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      const generatedQuery = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue([]),
+      };
+      const manager = {
+        createQueryBuilder: jest
+          .fn()
+          .mockReturnValueOnce(liveQuery)
+          .mockReturnValueOnce(generatedQuery),
+      };
+
+      await (service as any).findEligibleQuestions(manager, profile);
+
+      const exclusionClause = liveQuery.andWhere.mock.calls.find(
+        ([sql]: [string]) => sql.includes('talent_question_history'),
+      )?.[0];
+
+      expect(exclusionClause).toContain('attempt.completed_at IS NOT NULL');
+      expect(exclusionClause).toContain('attempt.force_submitted = true');
+    });
+  });
+
   // ── start — retake gate ─────────────────────────────────────────────────────
 
   describe('start() retake gate', () => {
@@ -1270,7 +1363,11 @@ describe('AdvancedAssessmentService', () => {
         createQueryBuilder: jest
           .fn()
           .mockReturnValueOnce(skillResultQuery)
-          .mockReturnValueOnce(activeSessionQuery),
+          .mockReturnValueOnce({
+            where: jest.fn().mockReturnThis(),
+            andWhere: jest.fn().mockReturnThis(),
+            getOne: jest.fn().mockResolvedValue(processingAttempt),
+          }),
       };
 
       talentProfileRepo.manager.transaction.mockImplementationOnce(
@@ -1369,15 +1466,13 @@ describe('AdvancedAssessmentService', () => {
       });
 
       jest
-        .spyOn(service as never, 'findEligibleQuestions' as never)
-        .mockResolvedValue([]);
-      jest
-        .spyOn(service as never, 'selectQuestionBlocks' as never)
-        .mockResolvedValue({
-          mcq: [],
-          shortText: [],
-          longText: [],
-        });
+        .spyOn(service as any, 'findEligibleQuestions')
+        .mockResolvedValue([] as any);
+      jest.spyOn(service as any, 'selectQuestionBlocks').mockResolvedValue({
+        mcq: [] as any,
+        shortText: [] as any,
+        longText: [] as any,
+      });
 
       const skillResultQuery = {
         innerJoin: jest.fn().mockReturnThis(),
@@ -1408,6 +1503,11 @@ describe('AdvancedAssessmentService', () => {
             createQueryBuilder: jest
               .fn()
               .mockReturnValueOnce(skillResultQuery)
+              .mockReturnValueOnce({
+                where: jest.fn().mockReturnThis(),
+                andWhere: jest.fn().mockReturnThis(),
+                getOne: jest.fn().mockResolvedValue(null),
+              })
               .mockReturnValueOnce(activeSessionQuery),
             create: jest.fn((_entity: unknown, data: unknown) => data),
             save: jest
