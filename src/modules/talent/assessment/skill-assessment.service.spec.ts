@@ -57,6 +57,12 @@ describe('SkillAssessmentService', () => {
     let eligibleQueryCount = 0;
     talentProfileRepo.manager.transaction.mockImplementation(
       async (work: (manager: EntityManagerLike) => Promise<unknown>) => {
+        const insertBuilder = {
+          into: jest.fn().mockReturnThis(),
+          values: jest.fn().mockReturnThis(),
+          orUpdate: jest.fn().mockReturnThis(),
+          execute: jest.fn().mockResolvedValue(undefined),
+        };
         const manager: EntityManagerLike = {
           findOne: jest.fn().mockResolvedValue(profile),
           getRepository: jest.fn(() => attemptRepo),
@@ -71,6 +77,7 @@ describe('SkillAssessmentService', () => {
               }
               return probeQuestions;
             }),
+            insert: jest.fn(() => insertBuilder),
           })),
           create: jest.fn(
             (
@@ -146,6 +153,7 @@ describe('SkillAssessmentService', () => {
       { generate: jest.fn() } as never,
       bankExhaustedAlert as never,
       { warmCache: warmCacheMock } as never,
+      { enqueue: jest.fn() } as never,
     );
   });
 
@@ -713,10 +721,18 @@ describe('SkillAssessmentService', () => {
     const updateMock = jest.fn();
     talentProfileRepo.manager.transaction.mockImplementation(
       async (work: (manager: EntityManagerLike) => Promise<unknown>) => {
+        const insertBuilder = {
+          into: jest.fn().mockReturnThis(),
+          values: jest.fn().mockReturnThis(),
+          orUpdate: jest.fn().mockReturnThis(),
+          execute: jest.fn().mockResolvedValue(undefined),
+        };
         const manager: EntityManagerLike = {
           findOne: jest.fn(),
           getRepository: jest.fn(() => attemptRepo),
-          createQueryBuilder: jest.fn(),
+          createQueryBuilder: jest.fn(() => ({
+            insert: jest.fn(() => insertBuilder),
+          })),
           save: jest.fn(),
           update: updateMock,
           create: jest.fn((_entity: unknown, data: unknown) => data),
