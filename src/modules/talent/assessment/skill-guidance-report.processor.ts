@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, UpdateResult } from 'typeorm';
 import { AssessmentResult } from '../../assessments/entities';
 import { GuidanceReportService } from '../../ai/guidance-report.service';
 import type { SkillGuidanceReportJobData } from './skill-guidance-report.types';
@@ -28,14 +28,21 @@ export class SkillGuidanceReportProcessor {
         weak_competencies: [],
       });
 
-      await this.resultRepo.update(
+      const result: UpdateResult = await this.resultRepo.update(
         { attempt_id: data.attemptId },
         { guidance_report: { ...report } },
       );
+
+      if ((result.affected ?? 0) === 0) {
+        throw new Error(
+          `No assessment result row updated for attempt=${data.attemptId}`,
+        );
+      }
     } catch (error) {
       this.logger.error(
         `Skill guidance report generation failed for attempt=${data.attemptId}: ${String(error)}`,
       );
+      throw error;
     }
   }
 }

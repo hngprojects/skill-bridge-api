@@ -68,7 +68,15 @@ export class SkillGuidanceReportQueueService
       setImmediate(() => {
         void (async () => {
           try {
-            await this.processor.process(payload);
+            const parsed = skillGuidanceReportJobSchema.safeParse(payload);
+            if (!parsed.success) {
+              this.logger.error(
+                'Invalid inline skill guidance report payload',
+                parsed.error.flatten(),
+              );
+              return;
+            }
+            await this.processor.process(parsed.data);
           } catch (err) {
             this.logger.error(
               'Inline skill guidance report failed',
