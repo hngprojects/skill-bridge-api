@@ -14,7 +14,7 @@ import { ListEmployersQueryDto } from './dto/list-employers-query.dto';
  * Every employer is on Free until the Payments page lands real tiers. */
 const PACKAGE_TIER_PLACEHOLDER = 'Free';
 
-interface EmployerListRow {
+export interface EmployerListRow {
   id: string;
   company_name: string | null;
   is_verified: boolean;
