@@ -418,13 +418,13 @@ export class AdminPaymentsService {
     if (query.status) {
       qb.andWhere('txn.status = :status', { status: query.status });
     }
-    if (query.date_from) {
+    if (query.dateFrom) {
       qb.andWhere('txn.created_at >= :date_from', {
-        date_from: query.date_from,
+        date_from: query.dateFrom,
       });
     }
-    if (query.date_to) {
-      const dateToEnd = new Date(query.date_to);
+    if (query.dateTo) {
+      const dateToEnd = new Date(query.dateTo);
       dateToEnd.setDate(dateToEnd.getDate() + 1);
       qb.andWhere('txn.created_at < :date_to_end', {
         date_to_end: dateToEnd.toISOString().split('T')[0],

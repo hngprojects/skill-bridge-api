@@ -410,7 +410,7 @@ describe('AdminPaymentsService', () => {
       });
       transactionRepo.createQueryBuilder.mockReturnValue(qb);
 
-      await service.getTransactions({ date_from: '2026-01-01', date_to: '2026-01-31' });
+      await service.getTransactions({ dateFrom: '2026-01-01', dateTo: '2026-01-31' });
 
       expect(qb.andWhere).toHaveBeenCalledWith('txn.created_at >= :date_from', { date_from: '2026-01-01' });
       expect(qb.andWhere).toHaveBeenCalledWith('txn.created_at < :date_to_end', { date_to_end: '2026-02-01' });

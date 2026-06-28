@@ -17,12 +17,12 @@ export class ListTransactionsQueryDto extends PaginationDto {
   @ApiPropertyOptional({ format: 'date' })
   @IsOptional()
   @IsDateString()
-  date_from?: string;
+  dateFrom?: string;
 
   @ApiPropertyOptional({ format: 'date' })
   @IsOptional()
   @IsDateString()
-  date_to?: string;
+  dateTo?: string;
 
   @ApiPropertyOptional({ description: 'Search by subscriber name' })
   @IsOptional()
