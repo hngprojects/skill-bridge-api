@@ -3,13 +3,40 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   AssessmentQuestion,
+  AssessmentType,
   QuestionReviewStatus,
   QuestionSource,
+  VerifiedLevel,
 } from '../../assessments/entities/assessment-question.entity';
 import { QuestionQualityNote } from '../../assessments/entities/question-quality-note.entity';
+import {
+  TALENT_CLAIMED_LEVELS,
+  TALENT_ROLE_TRACKS,
+} from '../../talent/talent.constants';
 import { ListQuestionsQueryDto } from './dto/list-questions-query.dto';
 import { AddQuestionDto } from './dto/add-question.dto';
 import { EditQuestionDto } from './dto/edit-question.dto';
+
+export interface QuestionBankHealthGridCell {
+  assessment_type: AssessmentType;
+  track: string;
+  verified_level: VerifiedLevel;
+  live_count: number;
+  flagged_count: number;
+  removed_count: number;
+  total_count: number;
+  is_empty: boolean;
+}
+
+interface HealthGridRawRow {
+  assessment_type: AssessmentType;
+  track: string;
+  verified_level: VerifiedLevel;
+  total: string;
+  live_count: string;
+  flagged_count: string;
+  removed_count: string;
+}
 
 export interface QuestionListRow {
   id: string;
