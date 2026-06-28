@@ -232,6 +232,91 @@ export class AdminQuestionsBankService {
     return { items };
   }
 
+  /**
+   * Raw counts per (assessment_type, track, verified_level) combination.
+   * There is no target-capacity concept anywhere in the codebase yet —
+   * QuestionBankGeneratorService/BankExhaustedAlertService only fire a
+   * reactive alert when AI generation fails 3 retries, not a percentage
+   * threshold against a defined pool size. Inventing a denominator here
+   * would produce an authoritative-looking but meaningless percentage, so
+   * this surfaces raw counts and `is_empty` (zero live questions) only.
+   * `target_defined: false` is included so the frontend can render an
+   * honest "no target set" state instead of a fabricated warning/critical
+   * percentage, pending a product decision (spec OQ).
+   */
+  async getHealthGrid(): Promise<{
+    target_defined: false;
+    cells: QuestionBankHealthGridCell[];
+  }> {
+    const rawRows = await this.questionRepository
+      .createQueryBuilder('q')
+      .select('q.assessment_type', 'assessment_type')
+      .addSelect('q.track', 'track')
+      .addSelect('q.verified_level', 'verified_level')
+      .addSelect('COUNT(*)', 'total')
+      .addSelect(
+        'COUNT(*) FILTER (WHERE q.is_live)',
+        'live_count',
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE q.review_status = '${QuestionReviewStatus.FLAGGED}')`,
+        'flagged_count',
+      )
+      .addSelect(
+        `COUNT(*) FILTER (WHERE q.review_status = '${QuestionReviewStatus.REMOVED}')`,
+        'removed_count',
+      )
+      .where('q.track IS NOT NULL')
+      .andWhere('q.verified_level IS NOT NULL')
+      .groupBy('q.assessment_type')
+      .addGroupBy('q.track')
+      .addGroupBy('q.verified_level')
+      .getRawMany<HealthGridRawRow>();
+
+    const countsByKey = new Map<string, HealthGridRawRow>(
+      rawRows.map((row) => [
+        this.healthGridKey(row.assessment_type, row.track, row.verified_level),
+        row,
+      ]),
+    );
+
+    const cells: QuestionBankHealthGridCell[] = [];
+    for (const assessmentType of [
+      AssessmentType.SKILL,
+      AssessmentType.ADVANCED,
+    ]) {
+      for (const track of TALENT_ROLE_TRACKS) {
+        for (const verifiedLevel of TALENT_CLAIMED_LEVELS) {
+          const row = countsByKey.get(
+            this.healthGridKey(assessmentType, track, verifiedLevel),
+          );
+          const liveCount = row ? Number(row.live_count) : 0;
+
+          cells.push({
+            assessment_type: assessmentType,
+            track,
+            verified_level: verifiedLevel,
+            live_count: liveCount,
+            flagged_count: row ? Number(row.flagged_count) : 0,
+            removed_count: row ? Number(row.removed_count) : 0,
+            total_count: row ? Number(row.total) : 0,
+            is_empty: liveCount === 0,
+          });
+        }
+      }
+    }
+
+    return { target_defined: false, cells };
+  }
+
+  private healthGridKey(
+    assessmentType: string,
+    track: string,
+    verifiedLevel: string,
+  ): string {
+    return `${assessmentType}|${track}|${verifiedLevel}`;
+  }
+
   private async getQuestionOrThrow(id: string): Promise<AssessmentQuestion> {
     const question = await this.questionRepository.findOne({ where: { id } });
     if (!question) {
