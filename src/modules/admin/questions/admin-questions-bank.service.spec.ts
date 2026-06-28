@@ -267,4 +267,52 @@ describe('AdminQuestionsBankService', () => {
       ).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('getHealthGrid', () => {
+    it('never claims a target capacity exists', async () => {
+      const result = await service.getHealthGrid();
+
+      expect(result.target_defined).toBe(false);
+    });
+
+    it('returns a full grid covering every assessment_type/track/level combination', async () => {
+      const result = await service.getHealthGrid();
+
+      // 2 assessment types x 20 tracks x 4 verified levels
+      expect(result.cells).toHaveLength(160);
+      expect(result.cells.every((cell) => cell.is_empty)).toBe(true);
+      expect(result.cells.every((cell) => cell.live_count === 0)).toBe(true);
+    });
+
+    it('fills in real counts for combinations that have data and marks them non-empty', async () => {
+      getRawMany.mockResolvedValue([
+        {
+          assessment_type: AssessmentType.SKILL,
+          track: 'frontend_developer',
+          verified_level: VerifiedLevel.MID,
+          total: '5',
+          live_count: '3',
+          flagged_count: '1',
+          removed_count: '1',
+        },
+      ]);
+
+      const result = await service.getHealthGrid();
+
+      const matchingCell = result.cells.find(
+        (cell) =>
+          cell.assessment_type === AssessmentType.SKILL &&
+          cell.track === 'frontend_developer' &&
+          cell.verified_level === VerifiedLevel.MID,
+      );
+
+      expect(matchingCell).toMatchObject({
+        live_count: 3,
+        flagged_count: 1,
+        removed_count: 1,
+        total_count: 5,
+        is_empty: false,
+      });
+    });
+  });
 });
