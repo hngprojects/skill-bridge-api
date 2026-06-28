@@ -19,19 +19,19 @@ import { ListSubscriptionsQueryDto } from './dto/list-subscriptions-query.dto';
 import { ListTransactionsQueryDto } from './dto/list-transactions-query.dto';
 import { RevenueChartQueryDto } from './dto/revenue-chart-query.dto';
 
-interface StatCards {
+export interface StatCards {
   total_revenue: { value: number; currency: string };
   active_employer_subscriptions: number;
   active_talent_subscriptions: number;
   failed_payment_count: number;
 }
 
-interface RevenueChartData {
+export interface RevenueChartData {
   employer_revenue: { period: string; amount: number }[];
   talent_revenue: { period: string; amount: number }[];
 }
 
-interface EmployerPackageRow {
+export interface EmployerPackageRow {
   id: string;
   name: string;
   price: number;
@@ -40,7 +40,7 @@ interface EmployerPackageRow {
   is_free: boolean;
 }
 
-interface SubscriptionRow {
+export interface SubscriptionRow {
   id: string;
   subscriber_name: string;
   type: 'employer' | 'talent';
@@ -52,7 +52,7 @@ interface SubscriptionRow {
   days_left_in_grace: number | null;
 }
 
-interface TransactionRow {
+export interface TransactionRow {
   id: string;
   subscriber_name: string;
   type: string;
@@ -63,7 +63,7 @@ interface TransactionRow {
   linked_subscription_id: string | null;
 }
 
-interface TalentSubscriptionSummary {
+export interface TalentSubscriptionSummary {
   total_active: number;
   total_cancelled: number;
   monthly_price: number | null;
@@ -236,36 +236,32 @@ export class AdminPaymentsService {
       return this.paginatedTalentSubscriptions(talentQb, query, page, limit);
     }
 
-    const [employerRaw, employerTotal, talentRaw, talentTotal] = await Promise.all([
-      employerQb.getRawMany<Record<string, unknown>>(),
-      employerQb.getCount(),
-      talentQb.getRawMany<Record<string, unknown>>(),
-      talentQb.getCount(),
-    ]);
+    const employerRaw = await employerQb.getRawMany<Record<string, unknown>>();
+    const talentRaw = await talentQb.getRawMany<Record<string, unknown>>();
 
     const allRows = [
       ...this.mapEmployerSubRows(employerRaw),
       ...this.mapTalentSubRows(talentRaw),
     ];
 
+    let filtered = allRows;
+
     if (query.status) {
-      const filtered = allRows.filter((r) => r.status === query.status);
-      return this.paginateMerged(filtered, page, limit);
+      filtered = filtered.filter((r) => r.status === query.status);
     }
 
     if (query.search) {
       const term = query.search.toLowerCase();
-      const filtered = allRows.filter((r) =>
+      filtered = filtered.filter((r) =>
         r.subscriber_name.toLowerCase().includes(term),
       );
-      return this.paginateMerged(filtered, page, limit);
     }
 
-    allRows.sort(
+    filtered.sort(
       (a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime(),
     );
 
-    return this.paginateMerged(allRows, page, limit, employerTotal + talentTotal);
+    return this.paginateMerged(filtered, page, limit);
   }
 
   private async paginatedEmployerSubscriptions(
@@ -342,7 +338,7 @@ export class AdminPaymentsService {
       subscriber_name: row.subscriber_name as string,
       type: 'employer' as const,
       package_tier: (row.package_tier as string) ?? null,
-      monthly_price: row.monthly_price ? Number(row.monthly_price) : null,
+      monthly_price: row.monthly_price != null ? Number(row.monthly_price) : null,
       status: row.status as string,
       start_date: row.start_date as Date,
       next_billing_date: (row.next_billing_date as Date) ?? null,
@@ -358,7 +354,7 @@ export class AdminPaymentsService {
       subscriber_name: row.subscriber_name as string,
       type: 'talent' as const,
       package_tier: null,
-      monthly_price: row.monthly_price ? Number(row.monthly_price) : null,
+      monthly_price: row.monthly_price != null ? Number(row.monthly_price) : null,
       status: row.status as string,
       start_date: row.start_date as Date,
       next_billing_date: (row.next_billing_date as Date) ?? null,
@@ -428,8 +424,10 @@ export class AdminPaymentsService {
       });
     }
     if (query.date_to) {
-      qb.andWhere('txn.created_at <= :date_to', {
-        date_to: query.date_to,
+      const dateToEnd = new Date(query.date_to);
+      dateToEnd.setDate(dateToEnd.getDate() + 1);
+      qb.andWhere('txn.created_at < :date_to_end', {
+        date_to_end: dateToEnd.toISOString().split('T')[0],
       });
     }
     if (query.search) {

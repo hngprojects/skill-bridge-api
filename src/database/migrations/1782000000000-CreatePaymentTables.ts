@@ -120,9 +120,20 @@ export class CreatePaymentTables1782000000000 implements MigrationInterface {
         ADD CONSTRAINT "CK_transactions_status"
         CHECK ("status" IN ('successful', 'failed', 'refunded'))
     `);
+
+    await queryRunner.query(`
+      ALTER TABLE "transactions"
+        ADD CONSTRAINT "CK_transactions_linkage"
+        CHECK (
+          ("subscriber_type" = 'employer' AND "talent_subscription_id" IS NULL)
+          OR
+          ("subscriber_type" = 'talent' AND "employer_subscription_id" IS NULL)
+        )
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`ALTER TABLE "transactions" DROP CONSTRAINT IF EXISTS "CK_transactions_linkage"`);
     await queryRunner.query(`ALTER TABLE "transactions" DROP CONSTRAINT IF EXISTS "CK_transactions_status"`);
     await queryRunner.query(`ALTER TABLE "transactions" DROP CONSTRAINT IF EXISTS "CK_transactions_subscriber_type"`);
     await queryRunner.query(`ALTER TABLE "talent_subscriptions" DROP CONSTRAINT IF EXISTS "CK_talent_subscriptions_status"`);

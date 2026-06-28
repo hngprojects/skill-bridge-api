@@ -7,13 +7,10 @@ export const employerPackageSeeder: Seeder = {
   async run(dataSource: DataSource) {
     const repo = dataSource.getRepository(EmployerPackage);
 
-    const existing = await repo.count();
-    if (existing > 0) {
-      console.log('[EmployerPackageSeeder] packages already exist - skipping');
-      return;
-    }
+    const existing = await repo.find({ select: ['name'] });
+    const existingNames = new Set(existing.map((p) => p.name));
 
-    await repo.save([
+    const defaults = [
       repo.create({
         name: 'Free',
         price: 0,
@@ -28,8 +25,15 @@ export const employerPackageSeeder: Seeder = {
         features: null,
         is_free: false,
       }),
-    ]);
+    ];
 
-    console.log('[EmployerPackageSeeder] seeded Free + Paid placeholder packages');
+    const missing = defaults.filter((p) => !existingNames.has(p.name));
+    if (missing.length === 0) {
+      console.log('[EmployerPackageSeeder] all packages already exist - skipping');
+      return;
+    }
+
+    await repo.save(missing);
+    console.log(`[EmployerPackageSeeder] inserted missing packages: ${missing.map((p) => p.name).join(', ')}`);
   },
 };

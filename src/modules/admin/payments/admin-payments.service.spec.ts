@@ -224,6 +224,47 @@ describe('AdminPaymentsService', () => {
       expect(result.items[1].type).toBe('employer');
     });
 
+    it('preserves monthly_price=0 for free plans instead of coercing to null', async () => {
+      const dummyQb = chainable({ getRawMany: jest.fn().mockResolvedValue([]), getCount: jest.fn().mockResolvedValue(0) });
+      const employerQb = chainable({
+        getRawMany: jest.fn().mockResolvedValue([
+          { id: 'es-1', subscriber_name: 'Acme Corp', type: 'employer', package_tier: 'Free', monthly_price: '0', status: 'free', start_date: new Date(), next_billing_date: null, grace_period_ends_at: null },
+        ]),
+        getCount: jest.fn().mockResolvedValue(1),
+      });
+
+      employerSubscriptionRepo.createQueryBuilder.mockReturnValue(employerQb);
+      talentSubscriptionRepo.createQueryBuilder.mockReturnValue(dummyQb);
+
+      const result = await service.getSubscriptions({ type: 'employer' });
+
+      expect(result.items[0].monthly_price).toBe(0);
+    });
+
+    it('applies status + search filters cumulatively in merged mode', async () => {
+      const early = new Date('2026-01-01');
+      const qb1 = chainable({
+        getRawMany: jest.fn().mockResolvedValue([
+          { id: 'es-1', subscriber_name: 'Acme Corp', type: 'employer', package_tier: 'Free', monthly_price: '0', status: 'active', start_date: early, next_billing_date: null, grace_period_ends_at: null },
+          { id: 'es-2', subscriber_name: 'Beta Inc', type: 'employer', package_tier: 'Paid', monthly_price: '49.99', status: 'cancelled', start_date: early, next_billing_date: null, grace_period_ends_at: null },
+        ]),
+        getCount: jest.fn().mockResolvedValue(2),
+      });
+      const qb2 = chainable({
+        getRawMany: jest.fn().mockResolvedValue([]),
+        getCount: jest.fn().mockResolvedValue(0),
+      });
+
+      employerSubscriptionRepo.createQueryBuilder.mockReturnValue(qb1);
+      talentSubscriptionRepo.createQueryBuilder.mockReturnValue(qb2);
+
+      const result = await service.getSubscriptions({ status: 'active', search: 'acme' });
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].subscriber_name).toBe('Acme Corp');
+      expect(result.items[0].status).toBe('active');
+    });
+
     it('filters by employer type only', async () => {
       const dummyQb = chainable({ getRawMany: jest.fn().mockResolvedValue([]), getCount: jest.fn().mockResolvedValue(0) });
       const employerQb = chainable({
@@ -372,7 +413,7 @@ describe('AdminPaymentsService', () => {
       await service.getTransactions({ date_from: '2026-01-01', date_to: '2026-01-31' });
 
       expect(qb.andWhere).toHaveBeenCalledWith('txn.created_at >= :date_from', { date_from: '2026-01-01' });
-      expect(qb.andWhere).toHaveBeenCalledWith('txn.created_at <= :date_to', { date_to: '2026-01-31' });
+      expect(qb.andWhere).toHaveBeenCalledWith('txn.created_at < :date_to_end', { date_to_end: '2026-02-01' });
     });
 
     it('returns empty array when no transactions exist', async () => {
