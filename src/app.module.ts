@@ -38,6 +38,7 @@ import { AiResourcesModule } from './modules/ai-resources/ai-resources.module';
 import { AiReportModule } from './modules/ai-report/ai-report.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { AdminQuestionsModule } from './modules/admin/questions/admin-questions.module';
+import { AdminOverviewModule } from './modules/admin/overview/admin-overview.module';
 import { AdminTalentsModule } from './modules/admin/talents/admin-talents.module';
 import { EmployerDiscoveryModule } from './modules/employer-discovery/employer-discovery.module';
 import { OffersModule } from './modules/offers/offers.module';
@@ -73,6 +74,7 @@ import { MetricsInterceptor } from './modules/metrics/metrics.interceptor';
     AiReportModule,
     NotificationsModule,
     AdminQuestionsModule,
+    AdminOverviewModule,
     AdminTalentsModule,
     EmployerDiscoveryModule,
     OffersModule,
