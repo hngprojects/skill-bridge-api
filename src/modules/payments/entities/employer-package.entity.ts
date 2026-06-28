@@ -3,6 +3,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -16,6 +17,7 @@ export class EmployerPackage {
   id: string;
 
   @ApiProperty({ example: 'Free' })
+  @Index({ unique: true })
   @Column({ type: 'varchar', length: 100 })
   name: string;
 

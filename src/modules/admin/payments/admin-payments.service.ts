@@ -479,8 +479,10 @@ export class AdminPaymentsService {
       this.talentSubscriptionRepo.count({ where: { status: TalentSubscriptionStatus.CANCELLED } }),
       this.talentSubscriptionRepo
         .createQueryBuilder('ts')
-        .select('DISTINCT ts.price', 'price')
+        .select('ts.price', 'price')
         .where('ts.price IS NOT NULL')
+        .orderBy('ts.price', 'DESC')
+        .limit(1)
         .getRawOne<{ price: string }>(),
     ]);
 

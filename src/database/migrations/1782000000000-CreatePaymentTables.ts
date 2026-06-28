@@ -19,6 +19,11 @@ export class CreatePaymentTables1782000000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
+      CREATE UNIQUE INDEX "IDX_employer_packages_name"
+        ON "employer_packages" ("name")
+    `);
+
+    await queryRunner.query(`
       CREATE TABLE "employer_subscriptions" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "employer_id" uuid NOT NULL,
