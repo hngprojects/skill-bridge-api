@@ -45,8 +45,11 @@ describe('AdminQuestionsBankService', () => {
     updated_at: new Date('2026-01-01T00:00:00Z'),
   };
 
+  let getRawMany: jest.Mock;
+
   beforeEach(async () => {
     getManyAndCount = jest.fn();
+    getRawMany = jest.fn().mockResolvedValue([]);
     findOne = jest.fn();
     save = jest.fn((q) => Promise.resolve(q));
     create = jest.fn((input) => input);
