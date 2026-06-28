@@ -29,7 +29,8 @@ export class CreatePaymentTables1782000000000 implements MigrationInterface {
         "grace_period_ends_at" timestamptz NULL,
         "created_at" timestamptz NOT NULL DEFAULT now(),
         "updated_at" timestamptz NOT NULL DEFAULT now(),
-        CONSTRAINT "PK_employer_subscriptions" PRIMARY KEY ("id")
+        CONSTRAINT "PK_employer_subscriptions" PRIMARY KEY ("id"),
+        CONSTRAINT "CK_employer_subscriptions_status" CHECK ("status" IN ('active', 'past_due', 'cancelled', 'free'))
       )
     `);
 
@@ -76,6 +77,12 @@ export class CreatePaymentTables1782000000000 implements MigrationInterface {
     `);
 
     await queryRunner.query(`
+      ALTER TABLE "talent_subscriptions"
+        ADD CONSTRAINT "CK_talent_subscriptions_status"
+        CHECK ("status" IN ('active', 'cancelled', 'free'))
+    `);
+
+    await queryRunner.query(`
       CREATE TABLE "transactions" (
         "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "subscriber_id" uuid NOT NULL,
@@ -101,9 +108,25 @@ export class CreatePaymentTables1782000000000 implements MigrationInterface {
         ADD CONSTRAINT "FK_transactions_talent_subscription"
         FOREIGN KEY ("talent_subscription_id") REFERENCES "talent_subscriptions"("id") ON DELETE SET NULL
     `);
+
+    await queryRunner.query(`
+      ALTER TABLE "transactions"
+        ADD CONSTRAINT "CK_transactions_subscriber_type"
+        CHECK ("subscriber_type" IN ('employer', 'talent'))
+    `);
+
+    await queryRunner.query(`
+      ALTER TABLE "transactions"
+        ADD CONSTRAINT "CK_transactions_status"
+        CHECK ("status" IN ('successful', 'failed', 'refunded'))
+    `);
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`ALTER TABLE "transactions" DROP CONSTRAINT IF EXISTS "CK_transactions_status"`);
+    await queryRunner.query(`ALTER TABLE "transactions" DROP CONSTRAINT IF EXISTS "CK_transactions_subscriber_type"`);
+    await queryRunner.query(`ALTER TABLE "talent_subscriptions" DROP CONSTRAINT IF EXISTS "CK_talent_subscriptions_status"`);
+    await queryRunner.query(`ALTER TABLE "employer_subscriptions" DROP CONSTRAINT IF EXISTS "CK_employer_subscriptions_status"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "transactions"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "talent_subscriptions"`);
     await queryRunner.query(`DROP TABLE IF EXISTS "employer_subscriptions"`);
