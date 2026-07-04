@@ -44,6 +44,7 @@ import { AdminEmployersModule } from './modules/admin/employers/admin-employers.
 import { AdminIntegrityModule } from './modules/admin/integrity/admin-integrity.module';
 import { AdminPaymentsModule } from './modules/admin/payments/admin-payments.module';
 import { AdminOffersModule } from './modules/admin/offers/admin-offers.module';
+import { AdminEngagementModule } from './modules/admin/engagement/admin-engagement.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { EmployerDiscoveryModule } from './modules/employer-discovery/employer-discovery.module';
 import { OffersModule } from './modules/offers/offers.module';
@@ -85,6 +86,7 @@ import { MetricsInterceptor } from './modules/metrics/metrics.interceptor';
     AdminIntegrityModule,
     AdminPaymentsModule,
     AdminOffersModule,
+    AdminEngagementModule,
     PaymentsModule,
     EmployerDiscoveryModule,
     OffersModule,
