@@ -9,8 +9,8 @@ export class TrendIndicator {
 }
 
 export class StatCard {
-  @ApiProperty({ example: 50 })
-  value: number;
+  @ApiProperty({ example: 50, nullable: true })
+  value: number | null;
 
   @ApiProperty({ type: TrendIndicator })
   trend: TrendIndicator;

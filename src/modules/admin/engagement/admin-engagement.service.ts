@@ -13,10 +13,11 @@ import {
 /** Days a candidate is locked out of an advanced-assessment retake after completing one. */
 const RETAKE_GATE_DAYS = 14;
 const MIN_RETAKE_CANDIDATES = 10;
+const RETAKE_AGGREGATES_CACHE_TTL_MS = 5_000;
 const MINOR_UPTAKE_EMPTY_MESSAGE = 'No minor assessment data yet.';
 const RETAKE_DROPOFF_EMPTY_MESSAGE = 'Not enough retake data yet.';
 
-function statCard(value: number): StatCard {
+function statCard(value: number | null): StatCard {
   return { value, trend: { direction: null, change_percent: null } };
 }
 
@@ -25,10 +26,17 @@ interface RetakeAggregates {
   avgTimeToRetakeAfterGateClearsDays: number | null;
   dropoffByAttempt: Record<number, number>;
   candidateCount: number;
+  retakeCandidateCount: number;
 }
 
 @Injectable()
 export class AdminEngagementService {
+  private retakeAggregatesCache?: {
+    expiresAt: number;
+    value: RetakeAggregates;
+  };
+  private retakeAggregatesPromise?: Promise<RetakeAggregates>;
+
   constructor(
     @InjectRepository(AssessmentAttempt)
     private readonly attemptRepo: Repository<AssessmentAttempt>,
@@ -42,7 +50,7 @@ export class AdminEngagementService {
       minor_assessment_completion_rate: statCard(0),
       retake_conversion_rate: statCard(aggregates.retakeConversionRate),
       avg_time_to_retake_after_gate_clears_days: statCard(
-        aggregates.avgTimeToRetakeAfterGateClearsDays ?? 0,
+        aggregates.avgTimeToRetakeAfterGateClearsDays,
       ),
     };
   }
@@ -50,7 +58,7 @@ export class AdminEngagementService {
   async getRetakeDropoff(): Promise<RetakeDropoffResult> {
     const aggregates = await this.computeRetakeAggregates();
 
-    if (aggregates.candidateCount < MIN_RETAKE_CANDIDATES) {
+    if (aggregates.retakeCandidateCount < MIN_RETAKE_CANDIDATES) {
       return {
         buckets: [],
         empty: true,
@@ -82,6 +90,30 @@ export class AdminEngagementService {
   }
 
   private async computeRetakeAggregates(): Promise<RetakeAggregates> {
+    const now = Date.now();
+    if (
+      this.retakeAggregatesCache &&
+      this.retakeAggregatesCache.expiresAt > now
+    ) {
+      return this.retakeAggregatesCache.value;
+    }
+
+    if (!this.retakeAggregatesPromise) {
+      this.retakeAggregatesPromise = this.loadRetakeAggregates().finally(() => {
+        this.retakeAggregatesPromise = undefined;
+      });
+    }
+
+    const aggregates = await this.retakeAggregatesPromise;
+    this.retakeAggregatesCache = {
+      value: aggregates,
+      expiresAt: now + RETAKE_AGGREGATES_CACHE_TTL_MS,
+    };
+
+    return aggregates;
+  }
+
+  private async loadRetakeAggregates(): Promise<RetakeAggregates> {
     const attempts = await this.attemptRepo.find({
       where: { assessment_type: AssessmentType.ADVANCED },
       order: { started_at: 'ASC' },
@@ -100,12 +132,17 @@ export class AdminEngagementService {
     let retakeTakenCount = 0;
     let totalRetakeTimeSeconds = 0;
     let retakeTimeEntriesCount = 0;
+    let retakeCandidateCount = 0;
     const dropoffByAttempt: Record<number, number> = {};
 
     const now = new Date();
 
     for (const [, userAttempts] of attemptsByProfile) {
       if (userAttempts.length === 0) continue;
+
+      if (userAttempts.length > 1) {
+        retakeCandidateCount++;
+      }
 
       const firstAttempt = userAttempts[0];
       if (firstAttempt.completed_at) {
@@ -160,6 +197,7 @@ export class AdminEngagementService {
       avgTimeToRetakeAfterGateClearsDays,
       dropoffByAttempt,
       candidateCount: attemptsByProfile.size,
+      retakeCandidateCount,
     };
   }
 }

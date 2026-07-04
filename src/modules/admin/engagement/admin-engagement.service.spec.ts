@@ -87,7 +87,7 @@ describe('AdminEngagementService', () => {
         minor_assessment_completion_rate: { value: 0, trend: nullTrend },
         retake_conversion_rate: { value: 0, trend: nullTrend },
         avg_time_to_retake_after_gate_clears_days: {
-          value: 0,
+          value: null,
           trend: nullTrend,
         },
       });
@@ -131,14 +131,32 @@ describe('AdminEngagementService', () => {
     });
 
     it('returns dropoff buckets when enough candidate attempts exist', async () => {
-      const attempts = Array.from({ length: 10 }, (_, index) => ({
-        talent_profile_id: `user-${index}`,
-        started_at: new Date(Date.now() - 24 * 60 * 60 * 1000 * index),
-        completed_at: new Date(
-          Date.now() - 24 * 60 * 60 * 1000 * index + 60 * 60 * 1000,
-        ),
-        assessment_type: AssessmentType.ADVANCED,
-      }));
+      const baselineAttempts = buildRetakeFixture();
+      const repeatedAttempts = Array.from({ length: 10 }, (_, index) => {
+        const baseStartedAt = new Date(
+          Date.now() - 24 * 60 * 60 * 1000 * (index + 1),
+        );
+        const firstAttempt = {
+          talent_profile_id: `multi-user-${index}`,
+          started_at: new Date(
+            baseStartedAt.getTime() - 2 * 24 * 60 * 60 * 1000,
+          ),
+          completed_at: new Date(baseStartedAt.getTime() - 24 * 60 * 60 * 1000),
+          assessment_type: AssessmentType.ADVANCED,
+        };
+        const secondAttempt = {
+          talent_profile_id: `multi-user-${index}`,
+          started_at: new Date(
+            baseStartedAt.getTime() + 2 * 24 * 60 * 60 * 1000,
+          ),
+          completed_at: new Date(
+            baseStartedAt.getTime() + 3 * 24 * 60 * 60 * 1000,
+          ),
+          assessment_type: AssessmentType.ADVANCED,
+        };
+        return [firstAttempt, secondAttempt];
+      }).flat();
+      const attempts = [...baselineAttempts, ...repeatedAttempts];
       mockFind.mockResolvedValue(attempts);
 
       const result = await service.getRetakeDropoff();
@@ -146,10 +164,11 @@ describe('AdminEngagementService', () => {
       expect(result.empty).toBe(false);
       expect(result.empty_message).toBeNull();
       expect(result.buckets).toEqual([
-        { attempt: 1, retakes: 0 },
+        { attempt: 1, retakes: 11 },
         { attempt: 2, retakes: 0 },
         { attempt: 3, retakes: 0 },
       ]);
+      expect(result.buckets[0].retakes).toBe(11);
     });
   });
 
@@ -162,6 +181,7 @@ describe('AdminEngagementService', () => {
         empty: true,
         empty_message: 'No minor assessment data yet.',
       });
+      expect(mockFind).not.toHaveBeenCalled();
     });
   });
 });
