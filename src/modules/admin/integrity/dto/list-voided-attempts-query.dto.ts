@@ -7,9 +7,12 @@ export class ListVoidedAttemptsQueryDto extends PaginationDto {
   @ApiProperty({ required: false, enum: AssessmentType })
   @IsOptional()
   @IsEnum(AssessmentType)
-  assessment_type?: AssessmentType;
+  assessmentType?: AssessmentType;
 
-  @ApiProperty({ required: false, description: 'Search by talent name or email' })
+  @ApiProperty({
+    required: false,
+    description: 'Search by talent name or email',
+  })
   @IsOptional()
   @IsString()
   search?: string;
@@ -17,10 +20,10 @@ export class ListVoidedAttemptsQueryDto extends PaginationDto {
   @ApiProperty({ required: false, format: 'date' })
   @IsOptional()
   @IsDateString()
-  date_from?: string;
+  dateFrom?: string;
 
   @ApiProperty({ required: false, format: 'date' })
   @IsOptional()
   @IsDateString()
-  date_to?: string;
+  dateTo?: string;
 }

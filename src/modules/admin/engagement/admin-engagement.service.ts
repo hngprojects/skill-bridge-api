@@ -12,11 +12,10 @@ import {
 
 /** Days a candidate is locked out of an advanced-assessment retake after completing one. */
 const RETAKE_GATE_DAYS = 14;
-
+const MIN_RETAKE_CANDIDATES = 10;
 const MINOR_UPTAKE_EMPTY_MESSAGE = 'No minor assessment data yet.';
 const RETAKE_DROPOFF_EMPTY_MESSAGE = 'Not enough retake data yet.';
 
-/** A stat card with no period-over-period trend (Phase A). */
 function statCard(value: number): StatCard {
   return { value, trend: { direction: null, change_percent: null } };
 }
@@ -24,10 +23,8 @@ function statCard(value: number): StatCard {
 interface RetakeAggregates {
   retakeConversionRate: number;
   avgTimeToRetakeAfterGateClearsDays: number | null;
-  /** Number of retakes keyed by attempt ordinal (2nd attempt = key 1, etc.). */
   dropoffByAttempt: Record<number, number>;
-  /** Count of retake-timing samples; drives the retake-dropoff empty state. */
-  retakeTimeEntriesCount: number;
+  candidateCount: number;
 }
 
 @Injectable()
@@ -37,12 +34,10 @@ export class AdminEngagementService {
     private readonly attemptRepo: Repository<AssessmentAttempt>,
   ) {}
 
-  /** Row of 4 stat cards for the Engagement page. */
   async getStats(): Promise<EngagementPageStats> {
     const aggregates = await this.computeRetakeAggregates();
 
     return {
-      // Minor assessments have no DB entity yet — stubbed at zero (Phase A).
       minor_assessment_adoption_rate: statCard(0),
       minor_assessment_completion_rate: statCard(0),
       retake_conversion_rate: statCard(aggregates.retakeConversionRate),
@@ -52,11 +47,10 @@ export class AdminEngagementService {
     };
   }
 
-  /** Chart 1 — retake drop-off by attempt number. */
   async getRetakeDropoff(): Promise<RetakeDropoffResult> {
     const aggregates = await this.computeRetakeAggregates();
 
-    if (aggregates.retakeTimeEntriesCount === 0) {
+    if (aggregates.candidateCount < MIN_RETAKE_CANDIDATES) {
       return {
         buckets: [],
         empty: true,
@@ -70,17 +64,15 @@ export class AdminEngagementService {
     );
     const buckets = [];
     for (let i = 1; i <= maxAttemptNumber; i++) {
-      buckets.push({ attempt: i, retakes: aggregates.dropoffByAttempt[i] || 0 });
+      buckets.push({
+        attempt: i,
+        retakes: aggregates.dropoffByAttempt[i] || 0,
+      });
     }
 
     return { buckets, empty: false, empty_message: null };
   }
 
-  /**
-   * Chart 2 — minor assessment uptake by type. Stubbed until the minor
-   * assessment entity exists; the `track` filter is accepted for the API
-   * contract but does not affect the (always empty) result in Phase A.
-   */
   getMinorUptake(_track?: string): MinorUptakeResult {
     return {
       buckets: [],
@@ -89,11 +81,6 @@ export class AdminEngagementService {
     };
   }
 
-  /**
-   * Loads advanced-assessment attempts, groups them per candidate, and derives
-   * the retake conversion rate, average time-to-retake after the 14-day gate
-   * clears, and the retake drop-off distribution by attempt number.
-   */
   private async computeRetakeAggregates(): Promise<RetakeAggregates> {
     const attempts = await this.attemptRepo.find({
       where: { assessment_type: AssessmentType.ADVANCED },
@@ -172,7 +159,7 @@ export class AdminEngagementService {
       retakeConversionRate,
       avgTimeToRetakeAfterGateClearsDays,
       dropoffByAttempt,
-      retakeTimeEntriesCount,
+      candidateCount: attemptsByProfile.size,
     };
   }
 }

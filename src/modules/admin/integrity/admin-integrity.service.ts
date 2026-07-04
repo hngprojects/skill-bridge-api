@@ -55,9 +55,7 @@ export class AdminIntegrityService {
   async getStats(): Promise<IntegrityStats> {
     const now = new Date();
     const periodStart = new Date(now.getTime() - TREND_WINDOW_MS);
-    const priorPeriodStart = new Date(
-      periodStart.getTime() - TREND_WINDOW_MS,
-    );
+    const priorPeriodStart = new Date(periodStart.getTime() - TREND_WINDOW_MS);
 
     const [
       flaggedNow,
@@ -140,16 +138,16 @@ export class AdminIntegrityService {
       .offset((page - 1) * limit)
       .limit(limit);
 
-    if (query.assessment_type) {
+    if (query.assessmentType) {
       qb.andWhere('a.assessment_type = :assessmentType', {
-        assessmentType: query.assessment_type,
+        assessmentType: query.assessmentType,
       });
     }
-    if (query.date_from) {
-      qb.andWhere('a.created_at >= :dateFrom', { dateFrom: query.date_from });
+    if (query.dateFrom) {
+      qb.andWhere('a.created_at >= :dateFrom', { dateFrom: query.dateFrom });
     }
-    if (query.date_to) {
-      qb.andWhere('a.created_at <= :dateTo', { dateTo: query.date_to });
+    if (query.dateTo) {
+      qb.andWhere('a.created_at <= :dateTo', { dateTo: query.dateTo });
     }
     if (query.search) {
       qb.andWhere(
@@ -185,7 +183,10 @@ export class AdminIntegrityService {
         ? await this.violationSummaryForAttempts(attemptIds)
         : new Map<
             string,
-            { count: number; highestConfidence: 'high' | 'medium' | 'low' | null }
+            {
+              count: number;
+              highestConfidence: 'high' | 'medium' | 'low' | null;
+            }
           >();
 
     const items: VoidedAttemptRow[] = rawRows.map((row) => {
@@ -211,7 +212,10 @@ export class AdminIntegrityService {
   private async violationSummaryForAttempts(
     attemptIds: string[],
   ): Promise<
-    Map<string, { count: number; highestConfidence: 'high' | 'medium' | 'low' | null }>
+    Map<
+      string,
+      { count: number; highestConfidence: 'high' | 'medium' | 'low' | null }
+    >
   > {
     const scores = await this.scoreRepo
       .createQueryBuilder('s')

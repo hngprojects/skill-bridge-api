@@ -5,7 +5,7 @@ import { ErrorMessages } from '../../shared';
 
 describe('AuthService.adminLogin', () => {
   let service: AuthService;
-  let usersService: { findByEmail: jest.Mock; setRefreshTokenHash: jest.Mock };
+  let usersService: { findByEmail: jest.Mock; setRefreshTokenHash: jest.Mock; recordLastLogin: jest.Mock };
   let jwtService: { signAsync: jest.Mock };
 
   const baseAdmin = {
@@ -30,6 +30,7 @@ describe('AuthService.adminLogin', () => {
     usersService = {
       findByEmail: jest.fn(),
       setRefreshTokenHash: jest.fn(),
+      recordLastLogin: jest.fn(),
     };
     jwtService = { signAsync: jest.fn().mockResolvedValue('signed-token') };
 
@@ -102,6 +103,7 @@ describe('AuthService.adminLogin', () => {
     });
 
     expect(result.data.redirect_path).toBe('/question-bank');
+    expect(usersService.recordLastLogin).toHaveBeenCalledWith(baseAdmin.id);
   });
 
   it('redirects super_admin tier to /overview on success', async () => {

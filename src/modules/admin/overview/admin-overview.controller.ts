@@ -11,7 +11,7 @@ import { ScoreDistributionQueryDto } from './dto/score-distribution-query.dto';
 @ApiTags('admin-overview')
 @ApiBearerAuth()
 @Roles(UserRole.ADMIN)
-@AdminTiers(AdminTier.SUPER_ADMIN, AdminTier.ADMIN)
+@AdminTiers(AdminTier.SUPER_ADMIN, AdminTier.ADMIN, AdminTier.REVIEWER)
 @Controller('admin/overview')
 export class AdminOverviewController {
   constructor(private readonly overviewService: AdminOverviewService) {}
@@ -31,7 +31,9 @@ export class AdminOverviewController {
   }
 
   @Get('ai-generation-consumption')
-  @ApiOperation({ summary: 'Chart 2 — AI question generation volume over time' })
+  @ApiOperation({
+    summary: 'Chart 2 — AI question generation volume over time',
+  })
   async getAiGenerationConsumption(
     @Query() query: AiGenerationConsumptionQueryDto,
   ) {

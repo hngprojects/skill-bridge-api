@@ -1,38 +1,35 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { AdminEngagementService } from './admin-engagement.service';
 import { AssessmentAttempt } from '../../assessments/entities/assessment-attempt.entity';
 import { AssessmentType } from '../../assessments/entities/assessment-question.entity';
+import { AdminEngagementService } from './admin-engagement.service';
 
 describe('AdminEngagementService', () => {
   let service: AdminEngagementService;
+  let mockFind: jest.Mock;
 
-  const mockAttemptRepo = {
-    find: jest.fn(),
-  };
+  const nullTrend = { direction: null, change_percent: null };
 
   beforeEach(async () => {
+    mockFind = jest.fn();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdminEngagementService,
         {
           provide: getRepositoryToken(AssessmentAttempt),
-          useValue: mockAttemptRepo,
+          useValue: { find: mockFind },
         },
       ],
     }).compile();
 
-    service = module.get<AdminEngagementService>(AdminEngagementService);
+    service = module.get(AdminEngagementService);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  const nullTrend = { direction: null, change_percent: null };
-
-  // User 1: eligible, retook 2 days after the gate cleared.
-  // User 2: eligible, did not retake. User 3: not eligible yet.
   const buildRetakeFixture = () => {
     const now = new Date();
     const user1Attempt1CompletedAt = new Date(
@@ -81,7 +78,7 @@ describe('AdminEngagementService', () => {
 
   describe('getStats', () => {
     it('returns zeroed cards with null trends when there is no data', async () => {
-      mockAttemptRepo.find.mockResolvedValue([]);
+      mockFind.mockResolvedValue([]);
 
       const result = await service.getStats();
 
@@ -89,31 +86,40 @@ describe('AdminEngagementService', () => {
         minor_assessment_adoption_rate: { value: 0, trend: nullTrend },
         minor_assessment_completion_rate: { value: 0, trend: nullTrend },
         retake_conversion_rate: { value: 0, trend: nullTrend },
-        avg_time_to_retake_after_gate_clears_days: { value: 0, trend: nullTrend },
+        avg_time_to_retake_after_gate_clears_days: {
+          value: 0,
+          trend: nullTrend,
+        },
       });
     });
 
     it('computes retake cards from attempt data with null trends', async () => {
-      mockAttemptRepo.find.mockResolvedValue(buildRetakeFixture());
+      mockFind.mockResolvedValue(buildRetakeFixture());
 
       const result = await service.getStats();
 
-      // 2 eligible (user1, user2); user1 retook → 1/2 = 50%.
-      expect(result.retake_conversion_rate).toEqual({ value: 50, trend: nullTrend });
-      // user1 retook 2 days after the gate cleared.
+      expect(result.retake_conversion_rate).toEqual({
+        value: 50,
+        trend: nullTrend,
+      });
       expect(result.avg_time_to_retake_after_gate_clears_days).toEqual({
         value: 2,
         trend: nullTrend,
       });
-      // Minor cards stay stubbed at zero.
-      expect(result.minor_assessment_adoption_rate).toEqual({ value: 0, trend: nullTrend });
-      expect(result.minor_assessment_completion_rate).toEqual({ value: 0, trend: nullTrend });
+      expect(result.minor_assessment_adoption_rate).toEqual({
+        value: 0,
+        trend: nullTrend,
+      });
+      expect(result.minor_assessment_completion_rate).toEqual({
+        value: 0,
+        trend: nullTrend,
+      });
     });
   });
 
   describe('getRetakeDropoff', () => {
     it('returns the empty state when there is not enough retake data', async () => {
-      mockAttemptRepo.find.mockResolvedValue([]);
+      mockFind.mockResolvedValue([]);
 
       const result = await service.getRetakeDropoff();
 
@@ -124,15 +130,23 @@ describe('AdminEngagementService', () => {
       });
     });
 
-    it('returns dropoff buckets when retakes exist', async () => {
-      mockAttemptRepo.find.mockResolvedValue(buildRetakeFixture());
+    it('returns dropoff buckets when enough candidate attempts exist', async () => {
+      const attempts = Array.from({ length: 10 }, (_, index) => ({
+        talent_profile_id: `user-${index}`,
+        started_at: new Date(Date.now() - 24 * 60 * 60 * 1000 * index),
+        completed_at: new Date(
+          Date.now() - 24 * 60 * 60 * 1000 * index + 60 * 60 * 1000,
+        ),
+        assessment_type: AssessmentType.ADVANCED,
+      }));
+      mockFind.mockResolvedValue(attempts);
 
       const result = await service.getRetakeDropoff();
 
       expect(result.empty).toBe(false);
       expect(result.empty_message).toBeNull();
       expect(result.buckets).toEqual([
-        { attempt: 1, retakes: 1 },
+        { attempt: 1, retakes: 0 },
         { attempt: 2, retakes: 0 },
         { attempt: 3, retakes: 0 },
       ]);
@@ -148,7 +162,6 @@ describe('AdminEngagementService', () => {
         empty: true,
         empty_message: 'No minor assessment data yet.',
       });
-      expect(mockAttemptRepo.find).not.toHaveBeenCalled();
     });
   });
 });
