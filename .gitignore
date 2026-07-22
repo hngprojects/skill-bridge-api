@@ -63,5 +63,8 @@ data/question-banks/seed-skill.json
 data/question-banks/seed-skill.manifest.json
 branch_structure.json
 AGENTS.md
+
+.vscode/
+public/fonts/
 temp_auto_push.bat
 temp_interactive_push.bat
